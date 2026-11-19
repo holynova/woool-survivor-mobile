@@ -1,0 +1,255 @@
+{
+  "frames": {
+    "2001/hit/00001.png": {
+      "frame": {
+        "x": 4,
+        "y": 4,
+        "w": 204,
+        "h": 218
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 78,
+        "y": 39,
+        "w": 204,
+        "h": 218
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/hit/00002.png": {
+      "frame": {
+        "x": 212,
+        "y": 4,
+        "w": 206,
+        "h": 216
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 76,
+        "y": 39,
+        "w": 206,
+        "h": 216
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/hit/00003.png": {
+      "frame": {
+        "x": 4,
+        "y": 226,
+        "w": 204,
+        "h": 212
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 74,
+        "y": 42,
+        "w": 204,
+        "h": 212
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/hit/00000.png": {
+      "frame": {
+        "x": 212,
+        "y": 226,
+        "w": 200,
+        "h": 212
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 77,
+        "y": 44,
+        "w": 200,
+        "h": 212
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/hit/00004.png": {
+      "frame": {
+        "x": 4,
+        "y": 442,
+        "w": 190,
+        "h": 192
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 82,
+        "y": 42,
+        "w": 190,
+        "h": 192
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/hit/00005.png": {
+      "frame": {
+        "x": 198,
+        "y": 442,
+        "w": 168,
+        "h": 168
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 94,
+        "y": 54,
+        "w": 168,
+        "h": 168
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/hit/00006.png": {
+      "frame": {
+        "x": 4,
+        "y": 638,
+        "w": 144,
+        "h": 142
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 105,
+        "y": 69,
+        "w": 144,
+        "h": 142
+      },
+      "sourceSize": {
+        "w": 350,
+        "h": 350
+      }
+    },
+    "2001/track/00000.png": {
+      "frame": {
+        "x": 152,
+        "y": 638,
+        "w": 142,
+        "h": 78
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 3,
+        "y": 54,
+        "w": 142,
+        "h": 78
+      },
+      "sourceSize": {
+        "w": 200,
+        "h": 200
+      }
+    },
+    "2001/track/00001.png": {
+      "frame": {
+        "x": 298,
+        "y": 638,
+        "w": 144,
+        "h": 76
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 52,
+        "w": 144,
+        "h": 76
+      },
+      "sourceSize": {
+        "w": 200,
+        "h": 200
+      }
+    },
+    "2001/track/00003.png": {
+      "frame": {
+        "x": 4,
+        "y": 784,
+        "w": 144,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 56,
+        "w": 144,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 200,
+        "h": 200
+      }
+    },
+    "2001/track/00002.png": {
+      "frame": {
+        "x": 152,
+        "y": 784,
+        "w": 142,
+        "h": 70
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 55,
+        "w": 142,
+        "h": 70
+      },
+      "sourceSize": {
+        "w": 200,
+        "h": 200
+      }
+    },
+    "2001/track/00004.png": {
+      "frame": {
+        "x": 298,
+        "y": 784,
+        "w": 144,
+        "h": 64
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 58,
+        "w": 144,
+        "h": 64
+      },
+      "sourceSize": {
+        "w": 200,
+        "h": 200
+      }
+    }
+  },
+  "meta": {
+    "app": "woool-clean-repack",
+    "version": "2.3",
+    "image": "s_2001@0.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 512,
+      "h": 1024
+    },
+    "scale": "1"
+  }
+}
