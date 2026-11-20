@@ -1,6 +1,7 @@
 import {WOOWL_CHAPTERS} from './config/chapters';
 import {WOOWL_MONSTERS} from './config/curves';
 import {WOOWL_SKILLS} from './config/skills';
+import { missiles } from './ranged';
 import Phaser from 'phaser';
 import { game, calcDirection, WORLD_WIDTH, WORLD_HEIGHT } from './game';
 import type { EffectEvent, FlightKind, MonsterEntity, MinionEntity, DropEntity, DamageNumber } from './types';
@@ -97,6 +98,7 @@ export class BattleScene extends Phaser.Scene {
     atlas(hero,'assets/woool/heroes/r_'+hero.slice(5));
     const monsters = new Set(chapter.monsterPool.map(monster => WOOWL_MONSTERS[monster.typeId].spriteKey));
     for (const monster of game.monsters) if (monster.spriteKey) monsters.add(monster.spriteKey);
+    monsters.add(WOOWL_MONSTERS[chapter.rangedType].spriteKey);
     monsters.add(chapter.bossSpriteKey);
     if (game.heroClass==='taoist') for (const summon of ['20081','20082','20085']) monsters.add(summon);
     for (const id of monsters) atlas('m_'+id,'assets/woool/monsters/m_'+id);
@@ -446,7 +448,7 @@ export class BattleScene extends Phaser.Scene {
           sprite.play(animKey);
         }
         const dt=Math.max(.001,Math.min(this.game.loop.delta/1000,.08));
-        sprite.anims.timeScale=traveled<.05 ? 0 : Phaser.Math.Clamp(traveled/dt/(105*finalScale),.42,1.25);
+        sprite.anims.timeScale=m.aim ? .75 : traveled<.05 ? 0 : Phaser.Math.Clamp(traveled/dt/(105*finalScale),.42,1.25);
       }
     }
 
@@ -852,6 +854,28 @@ export class BattleScene extends Phaser.Scene {
         ground.arc(zone.x,zone.y,(zone.radius+zone.inner)/2,0,Math.PI*2);
         ground.strokePath();
       }
+    }
+
+    const fx = this.fxGraphics;
+    fx.clear();
+    for (const m of game.monsters) {
+      const kind = WOOWL_MONSTERS[m.typeId]?.missile;
+      if (!kind || !m.aim) continue;
+      const {windup,color} = missiles[kind];
+      const charge = Phaser.Math.Clamp(1-(m.aim.releaseAt-game.clock)/windup,0,1);
+      const x = m.x + m.aim.dx * 7, y = m.y - 8 + m.aim.dy * 7;
+      fx.fillStyle(color,.22).fillCircle(x,y,8+charge*7);
+      fx.fillStyle(color,.85).fillCircle(x,y,3+charge*4);
+      fx.fillStyle(0xfff4cd,1).fillCircle(x,y,1.6+charge);
+    }
+    for (const shot of game.enemyShots) {
+      const {color} = missiles[shot.kind];
+      const x=shot.x, y=shot.y-8, {dx,dy}=shot;
+      fx.fillStyle(0x261313,.32).fillEllipse(x,shot.y+6,12,5);
+      fx.lineStyle(5,color,.5).lineBetween(x-dx*14,y-dy*14,x,y);
+      fx.fillStyle(color,1).fillTriangle(x+dx*7,y+dy*7,
+        x-dx*4-dy*5,y-dy*4+dx*5,x-dx*4+dy*5,y-dy*4-dx*5);
+      fx.fillStyle(0xfff4d6,1).fillCircle(x,y,2.4);
     }
 
     // 2. Monster overhead health bars

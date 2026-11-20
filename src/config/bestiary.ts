@@ -14,6 +14,13 @@ export interface MonsterEntry {
 const chapters = Object.values(WOOWL_CHAPTERS);
 const shortName = (name: string) => name.split(' · ')[0];
 const traits: Record<string,string> = {
+  spore_bloom:'花冠亮起后吐出孢子，侧移让开。',
+  demon_archer:'拉弓后沿直线射箭，可用城郊树干挡箭。',
+  sand_cactus:'刺尖发亮后射出飞刺，横穿弹道躲避。',
+  mud_viper:'昂首蓄力后吐出毒液，可借树干掩护。',
+  frost_lancer:'枪尖凝霜时侧移，冰枪会飞向先前的位置。',
+  cinder_archer:'拉弓凝火后射出火矢，绕过石柱接近。',
+  triple_serpent:'三颗蛇首同时吐出扇形毒弹，拉远后穿过空隙。',
   field_spider:'体型小，成群接近时容易被草木遮住。',
   staff_hound:'持棍追击，沿城郊石道两侧压近。',
   marsh_fisher:'常与蟾群一同逼近，沿泥路退开。',
@@ -32,7 +39,7 @@ const traits: Record<string,string> = {
   shell_beetle:'伏在岩地低处，留意两侧的小型甲虫。',
   firebird:'飞掠接近，常先于塔中的使者抵达。',
   soul_envoy:'缓步靠近，远离鸟群和使者的合围。',
-  flame_envoy:'塔内的高气血守卫，尽早集中攻击。',
+  flame_envoy:'掌心亮起后射出魂火，侧移躲开后再接近。',
   scarecrow:'成群缓步逼近，保持移动可以带开怪群。',
   deer:'步速较快，容易从缓慢的怪群中追上来。',
   snake:'左右摆动逼近，沿弧线走位更容易拉开距离。',
@@ -55,13 +62,13 @@ const bossTactics: Record<string,string> = {
 const entries: MonsterEntry[] = [];
 for (const monster of Object.values(WOOWL_MONSTERS)) {
   for (const elite of [false,true]) {
-    const locations = chapters.filter(c => c.monsterPool.some(m => m.typeId===monster.id));
+    const locations = chapters.filter(c => c.rangedType===monster.id || c.monsterPool.some(m => m.typeId===monster.id));
     const opening = locations.some(c=>c.opening.includes(monster.id));
     entries.push({
       id:(elite?'elite-':'')+monster.id, group:elite?'精英':'普通',
       name:(elite?'精英·':'')+monster.name, sprite:monster.spriteKey,
       where:locations.map(c => shortName(c.name)).join('、'),
-      when:elite?'周期性增援':opening?'先遣怪群':'后续怪潮',
+      when:elite?'周期性增援':monster.missile?'0:35 起增援':opening?'先遣怪群':'后续怪潮',
       tactic:elite?(monster.id==='wild_boar'?'':traits[monster.id])+'精英会在脚下蓄力震地。':traits[monster.id]
     });
   }

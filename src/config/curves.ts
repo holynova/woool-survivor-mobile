@@ -10,9 +10,18 @@ export const MILESTONE_LORDS = [
   {scale:2.2, baseHp:8200, baseDmg:42, exp:160, radius:56},
   {scale:2.4, baseHp:15000, baseDmg:52, exp:300, radius:64}
 ] as const;
+export const ENEMY_HEALTH_SCALE = 2;
+export const attackPressure = (progress: number) => 1.25 + .35 * Math.max(0, Math.min(1,progress));
 export const AWAKENING_TIME = ELITE_MILESTONES[0];
 
 export const WOOWL_MONSTERS: Record<string, MonsterArchetype> = {
+  spore_bloom: {id:'spore_bloom', name:'食人花', spriteKey:'spore_bloom', missile:'spore', hp:75, speed:83, damage:15, exp:7, radius:20},
+  demon_archer: {id:'demon_archer', name:'逆魔弓箭手', spriteKey:'demon_archer', missile:'arrow', hp:99, speed:94, damage:19, exp:7, radius:22},
+  sand_cactus: {id:'sand_cactus', name:'仙人掌', spriteKey:'sand_cactus', missile:'thorn', hp:94, speed:72, damage:18, exp:7, radius:20},
+  mud_viper: {id:'mud_viper', name:'大土蛇', spriteKey:'mud_viper', missile:'venom', hp:90, speed:107, damage:19, exp:7, radius:20},
+  frost_lancer: {id:'frost_lancer', name:'玄冰掷枪尸卫', spriteKey:'frost_lancer', missile:'frost', hp:136, speed:89, damage:22, exp:7, radius:24},
+  cinder_archer: {id:'cinder_archer', name:'地火兽弓箭手', spriteKey:'cinder_archer', missile:'ember', hp:128, speed:98, damage:23, exp:7, radius:24},
+  triple_serpent: {id:'triple_serpent', name:'三头蛇', spriteKey:'triple_serpent', missile:'venom', hp:134, speed:93, damage:22, exp:7, radius:25},
   scarecrow: {
     id: 'scarecrow',
     name: '稻草人',
@@ -111,7 +120,7 @@ export const WOOWL_MONSTERS: Record<string, MonsterArchetype> = {
   shell_beetle: {id:'shell_beetle', name:'魔甲虫', spriteKey:'shell_beetle', hp:82, speed:99, damage:15, exp:5, radius:20},
   firebird: {id:'firebird', name:'火烈鸟', spriteKey:'firebird', hp:85, speed:117, damage:16, exp:5, radius:20},
   soul_envoy: {id:'soul_envoy', name:'招魂使', spriteKey:'soul_envoy', hp:110, speed:94, damage:17, exp:6, radius:24},
-  flame_envoy: {id:'flame_envoy', name:'烈焰使', spriteKey:'flame_envoy', hp:280, speed:100, damage:26, exp:13, radius:28}
+  flame_envoy: {missile:'spirit', id:'flame_envoy', name:'烈焰使', spriteKey:'flame_envoy', hp:280, speed:100, damage:26, exp:13, radius:28}
 };
 
 export const WOOWL_DIFFICULTY_CURVES: Record<DifficultyCurveId, DifficultyCurveDefinition> = {
@@ -299,9 +308,10 @@ export function evaluateCurveState(
   // Early game (p = 0..0.22): 8-15 active enemies.
   // Mid game (p = 0.22..0.6): 30-65 enemies, intense swarm waves.
   // Late game (p = 0.6..1.0): 75-135 enemies, full pressure horde survival.
+  const openingDensity = .62 + .38 * Math.min(1,elapsed / 90);
   const baseCount = 8 + Math.pow(p, 1.32) * 78;
-  const targetCount = Math.min(135, Math.max(6, Math.round(baseCount * waveDensityFactor * curve.densityMult)));
-  const spawnChancePerSec = Math.min(22, (1.2 + Math.pow(p, 1.25) * 12.5) * waveDensityFactor * curve.densityMult);
+  const targetCount = Math.min(135, Math.max(6, Math.round(baseCount * openingDensity * waveDensityFactor * curve.densityMult)));
+  const spawnChancePerSec = Math.min(22, (1.2 + Math.pow(p, 1.25) * 12.5) * openingDensity * waveDensityFactor * curve.densityMult);
 
   return {
     phaseIndex,
@@ -309,7 +319,7 @@ export function evaluateCurveState(
     targetCount,
     spawnChancePerSec,
     hpMult: curve.hpMult * effectiveChapterHp * waveHpFactor,
-    dmgMult: curve.dmgMult * effectiveChapterDmg,
+    dmgMult: curve.dmgMult * effectiveChapterDmg * attackPressure(p),
     speedMult: curve.speedMult * effectiveChapterSpd * waveSpeedFactor * 1.04 * (curveId === 'standard' ? .85 + .15 * Math.min(1, elapsed / 75) : 1),
     expBonusFlat,
     progress: p

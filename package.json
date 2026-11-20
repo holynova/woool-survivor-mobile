@@ -1,13 +1,13 @@
 {
   "name": "woool-survivor-mobile",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --clearScreen false",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node tests/simulate_curves.mjs && node tests/campaign.mjs && node tests/codex.mjs"
+    "test": "node tests/simulate_curves.mjs && node tests/campaign.mjs && node tests/codex.mjs && node tests/ranged.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0",

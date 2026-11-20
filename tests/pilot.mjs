@@ -14,6 +14,18 @@ export function steer(g) {
     const x=p.x+dx*150,y=p.y+dy*150;
     const edge=Math.min(x-80,2480-x,y-80,1360-y);
     let score=Math.min(edge,150)*.12+Math.min(edge,0)*3+(dx*g.inputX+dy*g.inputY)*7;
+    // A screened path ends early at solid scenery. Avoid walking into the same trunk.
+    const path={x:p.x,y:p.y};
+    g.terrain.move(path,dx*90,dy*90);
+    score-=Math.hypot(path.x-(p.x+dx*90),path.y-(p.y+dy*90))*3.5;
+    for(const shot of g.enemyShots) {
+      const rx=p.x-shot.x,ry=p.y-shot.y;
+      const ahead=rx*shot.dx+ry*shot.dy;
+      if(ahead>=0 && ahead<160 && Math.abs(rx*shot.dy-ry*shot.dx)<38){
+        const cross=Math.abs((rx+dx*60)*shot.dy-(ry+dy*60)*shot.dx);
+        score-=Math.max(0,52-cross)*2;
+      }
+    }
     if(goal)score-=Math.hypot(goal.x-x,goal.y-y)*.38;
     for(const m of near){
       const d=Math.hypot(m.x-x,m.y-y)-m.radius;

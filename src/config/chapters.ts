@@ -15,6 +15,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     durationSeconds: 600,
     ambientTheme: 'peach',
     description: '桃林中的稻草人和角鹿先到，毒蜘蛛和野猪随后逼近。',
+    rangedType: 'spore_bloom',
     opening: ['scarecrow', 'deer'],
     lordTypes: ['field_spider', 'wild_boar', 'blade_hound'],
     monsterPool: [
@@ -39,6 +40,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     durationSeconds: 600,
     ambientTheme: 'embers',
     description: '棍犬与刀犬巡守城郊军道，骷髅援军随后出城。',
+    rangedType: 'demon_archer',
     opening: ['staff_hound', 'blade_hound'],
     lordTypes: ['staff_hound', 'skeleton', 'enhanced_skeleton'],
     monsterPool: [
@@ -63,6 +65,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     durationSeconds: 600,
     ambientTheme: 'sand',
     description: '沙蝎与土狼沿沙道合围，沙雕和沙怪从戈壁深处加入。',
+    rangedType: 'sand_cactus',
     opening: ['sand_scorpion', 'sand_wolf'],
     lordTypes: ['sand_scorpion', 'sand_vulture', 'sand_golem'],
     monsterPool: [
@@ -86,6 +89,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     durationSeconds: 600,
     ambientTheme: 'wisp',
     description: '癞蛤蟆和鱼人盘踞沼地，毒蟒穿过泥径增援。',
+    rangedType: 'mud_viper',
     opening: ['marsh_toad', 'marsh_fisher'],
     lordTypes: ['marsh_toad', 'marsh_fisher', 'red_serpent'],
     monsterPool: [
@@ -110,6 +114,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     durationSeconds: 600,
     ambientTheme: 'frost',
     description: '幽魂和幽影武士穿行雪原，角鹿与骷髅从冰道赶来。',
+    rangedType: 'frost_lancer',
     opening: ['pale_wraith', 'shadow_warrior'],
     lordTypes: ['pale_wraith', 'shadow_warrior', 'enhanced_skeleton'],
     monsterPool: [
@@ -134,6 +139,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     durationSeconds: 600,
     ambientTheme: 'lava',
     description: '鬼方火卒和猛魔刀斧手守住熔岩路口，炎魔坐镇深处。',
+    rangedType: 'cinder_archer',
     opening: ['cinder_imp', 'demon_axeman'],
     lordTypes: ['cinder_imp', 'demon_axeman', 'inferno_demon'],
     monsterPool: [
@@ -149,6 +155,7 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     bgImage:'./assets/woool/maps/serpent_valley.jpg',bossName:'三头蛇王',bossSpriteKey:'hydra_king',
     bossHp:54000,bossDamage:77,chapterDifficulty:2.25,targetKills:1700,durationSeconds:600,
     ambientTheme:'wisp',description:'穿过甲虫密布的岩径，迎战五蛇殿的三头蛇王。',
+    rangedType: 'triple_serpent',
     opening: ['shell_beetle', 'red_serpent'],
     lordTypes: ['shell_beetle', 'red_serpent', 'black_serpent'],
     monsterPool: [
@@ -164,12 +171,12 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     bgImage:'./assets/woool/maps/heaven_tower.jpg',bossName:'通天教主',bossSpriteKey:'sky_pontiff',
     bossHp:58000,bossDamage:81,chapterDifficulty:2.35,targetKills:1800,durationSeconds:600,
     ambientTheme:'embers',description:'穿过火烈鸟与两位使者的封锁，在九重云霄迎战通天教主。',
+    rangedType: 'flame_envoy',
     opening: ['firebird', 'soul_envoy'],
     lordTypes: ['firebird', 'soul_envoy', 'flame_envoy'],
     monsterPool: [
       {typeId:'firebird', weight:30},
-      {typeId:'soul_envoy', weight:25},
-      {typeId:'flame_envoy', weight:23}
+      {typeId:'soul_envoy', weight:25}
     ]
   }
 };

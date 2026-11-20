@@ -82,6 +82,8 @@ export interface ActivePassiveState {
 }
 
 export interface MonsterEntity {
+  aim?: { dx:number; dy:number; releaseAt:number };
+  nextShotAt?: number;
   id: number;
   typeId: string;
   name: string;
@@ -195,6 +197,7 @@ export interface EffectEvent {
 }
 
 export interface MonsterArchetype {
+  missile?: import('./ranged').MissileKind;
   id: string;
   name: string;
   hp: number;
@@ -246,6 +249,7 @@ export interface ChapterDefinition {
   durationSeconds: number;
   description: string;
   ambientTheme: 'peach' | 'embers' | 'sand' | 'wisp' | 'frost' | 'lava';
+  rangedType: string;
   opening: [string, string];
   lordTypes: [string, string, string];
   monsterPool: {

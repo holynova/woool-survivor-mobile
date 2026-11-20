@@ -16,12 +16,13 @@ import type {
 import { WOOWL_SKILLS, WOOWL_PASSIVES } from './config/skills';
 import { WOOWL_CHAPTERS } from './config/chapters';
 import {
-  AWAKENING_TIME,
+  AWAKENING_TIME, ENEMY_HEALTH_SCALE, attackPressure,
   ELITE_MILESTONES, MILESTONE_LORDS,
   WOOWL_MONSTERS,
   WOOWL_DIFFICULTY_CURVES,
   evaluateCurveState
 } from './config/curves';
+import { missiles, FIRST_RANGED_WAVE, rangedWave, type EnemyShot, type MissileKind } from './ranged';
 import { attackZones, type DangerZone } from './encounters';
 import { gearInfo, freshTraining, type Equipment, type Training } from './config/equipment';
 import { sound } from './audio';
@@ -68,6 +69,8 @@ export class GameEngine {
   equipment: Equipment = {weapon: 0, armor: 0};
   training: Training = freshTraining();
   dangers: DangerZone[] = [];
+  enemyShots: EnemyShot[] = [];
+  private nextRangedWaveAt = FIRST_RANGED_WAVE;
   clock = 0;
   wave = 1;
   wavePhaseName = '发育起势';
@@ -178,6 +181,8 @@ export class GameEngine {
     this.bossDefeated = false;
     this.monsters = [];
     this.flights = [];
+    this.enemyShots = [];
+    this.nextRangedWaveAt = FIRST_RANGED_WAVE;
     this.minions = [];
     this.drops = [];
     this.damageNumbers = [];
@@ -217,6 +222,8 @@ export class GameEngine {
     this.bossDefeated = false;
     this.monsters = [];
     this.flights = [];
+    this.enemyShots = [];
+    this.nextRangedWaveAt = FIRST_RANGED_WAVE;
     this.minions = [];
     this.drops = [];
     this.damageNumbers = [];
@@ -269,6 +276,7 @@ export class GameEngine {
 
   snapshot() {
     return {
+      encounterVersion: 1, enemyShots:this.enemyShots, nextRangedWaveAt:this.nextRangedWaveAt,
       tempoVersion: 2, rerolls:this.rerolls, flights:this.flights, runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
       phase: this.phase, clock: this.clock, wave: this.wave, wavePhaseName: this.wavePhaseName,
       waveProgress: this.waveProgress, waveTimer: this.waveTimer, bossSpawned: this.bossSpawned, bossDefeated: this.bossDefeated,
@@ -307,6 +315,15 @@ export class GameEngine {
       choice.description = choice.type === 'skill'
         ? WOOWL_SKILLS[choice.id].upgrades.find(u => u.level === choice.level)?.description ?? def.desc
         : def.desc;
+    }
+    this.enemyShots = state.enemyShots ?? [];
+    this.nextRangedWaveAt = state.nextRangedWaveAt ?? Math.max(FIRST_RANGED_WAVE, this.clock + 4);
+    if (!state.encounterVersion) {
+      for (const m of this.monsters) {
+        m.hp *= ENEMY_HEALTH_SCALE;
+        m.maxHp *= ENEMY_HEALTH_SCALE;
+        m.damage = Math.round(m.damage * attackPressure(this.clock / this.getBossTriggerTime()));
+      }
     }
     this.flights=state.flights ?? [];
     this.spawnedMilestones = new Set(state.tempoVersion===2 ? milestones : ELITE_MILESTONES.filter(mark=>mark<=this.clock));
@@ -1175,6 +1192,17 @@ export class GameEngine {
       }
     }
 
+    if (this.clock >= this.nextRangedWaveAt) {
+      const wave = rangedWave(this.clock);
+      const active = this.monsters.filter(m => m.typeId === chap.rangedType).length;
+      for (let i = 0; i < Math.min(wave.count, wave.cap - active); i++) {
+        const elite = this.clock >= 360 && i === 1 && Math.random() < .22;
+        this.spawnMonsterFromChapter(elite, 305 + Math.random() * 70, chap.rangedType);
+      }
+      this.nextRangedWaveAt = this.clock + wave.interval;
+    }
+
+    this.advanceEnemyShots(dt);
     for (const [index,mark] of ELITE_MILESTONES.entries()) {
       if(this.clock>=mark && !this.spawnedMilestones.has(mark)){
         this.spawnedMilestones.add(mark);
@@ -1183,7 +1211,7 @@ export class GameEngine {
     }
 
     // Periodic Minor Elite Spawn
-    this.eliteTimer += dt;
+    if (this.clock >= 30) this.eliteTimer += dt;
     if (this.eliteTimer >= curve.eliteInterval) {
       this.eliteTimer = 0;
       const eliteCount = this.difficultyId === 'hell' || state.progress > 0.65 ? 2 : 1;
@@ -1201,6 +1229,7 @@ export class GameEngine {
     const meleeAttackers: MonsterEntity[] = [];
     for (const m of this.monsters) {
       if (m.stunUntil && this.clock < m.stunUntil) {
+        m.aim = undefined;
         continue;
       }
 
@@ -1255,6 +1284,8 @@ export class GameEngine {
         }
       }
 
+      const missile = WOOWL_MONSTERS[m.typeId]?.missile;
+      if (missile && this.rangedAttack(m, missile, dx/dist, dy/dist, dist)) continue;
       if (dist > m.radius + 14) {
         this.terrain.move(m, vx*dt, vy*dt, monsterFootprint(m), m.id%2 ? 1 : -1);
       } else {
@@ -1278,6 +1309,49 @@ export class GameEngine {
       const hitChunk = Math.max(4, Math.round(lead.damage * 0.36 * swarmMult));
       this.hitPlayer(hitChunk, lead);
     }
+  }
+
+  private rangedAttack(m: MonsterEntity, kind: MissileKind, dx: number, dy: number, distance: number) {
+    const profile = missiles[kind];
+    if (m.aim) {
+      const aim = m.aim;
+      m.dir = calcDirection(aim.dx, aim.dy);
+      if (this.clock >= aim.releaseAt) {
+        const angle = Math.atan2(aim.dy, aim.dx);
+        const spread = m.typeId === 'triple_serpent' ? [-.22, 0, .22] : [0];
+        for (const offset of spread) {
+          this.enemyShots.push({kind, x:m.x, y:m.y, dx:Math.cos(angle+offset), dy:Math.sin(angle+offset),
+            remaining:310, damage:Math.max(4, Math.round(m.damage * .68))});
+        }
+        m.nextShotAt = this.clock + profile.cooldown + (m.id % 5) * .12;
+        m.aim = undefined;
+      }
+      return true;
+    }
+    if (distance > 210) return false;
+    if (this.clock >= (m.nextShotAt ?? 0)) {
+      m.aim = {dx, dy, releaseAt:this.clock + profile.windup};
+    }
+    return true;
+  }
+
+  private advanceEnemyShots(dt: number) {
+    this.enemyShots = this.enemyShots.filter(shot => {
+      let travel = Math.min(shot.remaining, missiles[shot.kind].speed * dt);
+      while (travel > 0) {
+        const step = Math.min(6, travel);
+        shot.x += shot.dx * step;
+        shot.y += shot.dy * step;
+        shot.remaining -= step;
+        travel -= step;
+        if (this.terrain.settle(shot, 3)) return false;
+        if (Math.hypot(shot.x-this.player.x, shot.y-this.player.y) <= PLAYER_RADIUS + 4) {
+          if (this.phase === 'battle') this.hitPlayer(shot.damage);
+          return false;
+        }
+      }
+      return shot.remaining > 0.001;
+    });
   }
 
   private pickMonsterFromPool(progress: number): string {
@@ -1333,8 +1407,8 @@ export class GameEngine {
       name: isElite ? `【精英】${arch.name}` : arch.name,
       x:spawn.x,
       y:spawn.y,
-      hp: finalHp,
-      maxHp: finalHp,
+      hp: finalHp * ENEMY_HEALTH_SCALE,
+      maxHp: finalHp * ENEMY_HEALTH_SCALE,
       speed: finalSpeed,
       damage: finalDmg,
       exp: finalExp,
@@ -1372,8 +1446,8 @@ export class GameEngine {
     const {name:species, spriteKey} = WOOWL_MONSTERS[chap.lordTypes[tier-1]];
     const name = species+'领主';
 
-    const hp = Math.round(baseHp * curve.hpMult * (1 + (chap.chapterDifficulty - 1) * 0.45));
-    const dmg = Math.round(baseDmg * curve.dmgMult * (1 + (chap.chapterDifficulty - 1) * 0.35));
+    const hp = ENEMY_HEALTH_SCALE * Math.round(baseHp * curve.hpMult * (1 + (chap.chapterDifficulty - 1) * 0.45));
+    const dmg = Math.round(baseDmg * attackPressure(this.clock / this.getBossTriggerTime()) * curve.dmgMult * (1 + (chap.chapterDifficulty - 1) * 0.35));
 
     const spawn = {x,y};
     this.terrain.settle(spawn, monsterFootprint({radius:radius}));
@@ -1417,8 +1491,8 @@ export class GameEngine {
     const x = Math.max(140, Math.min(WORLD_WIDTH - 140, this.player.x + Math.cos(angle) * 480));
     const y = Math.max(140, Math.min(WORLD_HEIGHT - 140, this.player.y + Math.sin(angle) * 480));
 
-    const hp = Math.round(chap.bossHp * curve.bossHpMult);
-    const dmg = Math.round(chap.bossDamage * curve.bossDmgMult);
+    const hp = ENEMY_HEALTH_SCALE * Math.round(chap.bossHp * curve.bossHpMult);
+    const dmg = Math.round(chap.bossDamage * curve.bossDmgMult * attackPressure(1));
 
     const spawn = {x,y};
     this.terrain.settle(spawn, monsterFootprint({radius:76}));
