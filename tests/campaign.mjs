@@ -13,6 +13,12 @@ try {
   globalThis.localStorage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)};
   const setSeed=n=>{let state=n;Math.random=()=>((state=(Math.imul(1664525,state)+1013904223)>>>0)/4294967296)};
   const {Terrain,PLAYER_RADIUS}=await server.ssrLoadModule('/src/terrain.ts');
+  const city=new Terrain('central_state');
+  const buildings=city.props.filter(p=>p.kind==='ancient_pavilion');
+  const lamps=city.props.filter(p=>p.kind==='stone_lantern');
+  assert.ok(buildings.length && lamps.length);
+  const tallestLamp=Math.max(...lamps.map(p=>p.width*102/45));
+  assert.ok(tallestLamp<105 && buildings.every(p=>p.width*287/310>tallestLamp*5),'courtyard scale');
   for (const id of Object.keys(chapters)) {
     const terrain=new Terrain(id);
     assert.deepEqual(terrain.props,new Terrain(id).props,id+' stable terrain');

@@ -1722,7 +1722,11 @@ export class GameEngine {
         tier: 1
       });
     }
-    for (let i=firstDrop;i<this.drops.length;i++) this.terrain.settle(this.drops[i],5);
+    for (let i=firstDrop;i<this.drops.length;i++) {
+      const drop=this.drops[i];
+      drop.droppedAt=this.clock;
+      this.terrain.settle(drop,5);
+    }
   }
 
   private updateDrops(dt: number) {

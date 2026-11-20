@@ -5,14 +5,15 @@ export const FOOT_OFFSET = 24;
 
 type Point = {x: number; y: number};
 
-// Width, footprint half-axes and vertical anchor, measured against the sprite base.
+// A standing adult occupies roughly 105–118 world units. Width is the full
+// isometric sprite, rx/ry are its solid base, and anchor is the ground contact.
 const shapes = {
-  tree_peach: [178, 18, 12, .92], tree_pine: [165, 20, 14, .92], tree_willow: [164, 19, 13, .92],
-  ancient_pavilion: [170, 62, 34, .88], ancient_well: [82, 30, 18, .87], wood_fence: [110, 54, 7, .67],
-  rock_boulder: [83, 34, 22, .84], stone_lantern: [51, 17, 11, .92],
-  dead_tree: [153, 23, 13, .9], stele: [98, 34, 19, .87], stump: [124, 36, 18, .88],
-  reeds: [61, 10, 6, .93], snow_fir: [158, 20, 12, .93], ice_spires: [108, 34, 20, .87],
-  gate_engine: [99, 31, 17, .91], lava_spire: [120, 35, 20, .88], brazier: [84, 30, 17, .85]
+  tree_peach: [266, 19, 13, .96], tree_pine: [288, 23, 16, .96], tree_willow: [260, 22, 15, .95],
+  ancient_pavilion: [510, 176, 80, .81], ancient_well: [112, 39, 22, .86], wood_fence: [134, 62, 8, .67],
+  rock_boulder: [93, 35, 21, .83], stone_lantern: [35, 12, 8, .94],
+  dead_tree: [212, 20, 14, .95], stele: [102, 37, 19, .89], stump: [85, 30, 16, .87],
+  reeds: [57, 9, 6, .91], snow_fir: [270, 21, 15, .95], ice_spires: [130, 41, 21, .84],
+  gate_engine: [128, 41, 24, .9], lava_spire: [146, 45, 22, .87], brazier: [52, 20, 12, .86]
 } as const;
 export type PropKind = keyof typeof shapes;
 export interface TerrainProp extends Point {
@@ -60,7 +61,8 @@ const regions: Record<string, Region> = {
 };
 
 export function propUrl(kind: PropKind) {
-  return './assets/woool/terrain/'+kind+'.webp';
+  const file=kind==='ancient_pavilion' ? 'ancient_pavilion_hd' : kind==='stone_lantern' ? 'stone_lantern_paving' : kind;
+  return './assets/woool/terrain/'+file+'.webp';
 }
 
 const CELL = 160;
@@ -78,7 +80,12 @@ export class Terrain {
     function random() { seed=(Math.imul(seed,1664525)+1013904223)>>>0; return seed/4294967296; }
     const place=(kind:PropKind,x:number,y:number,scale:number)=>{
       const [width,rx,ry,anchor]=shapes[kind];
+      // Built objects vary little in size. Vegetation can vary with age.
+      if (['ancient_pavilion','stone_lantern','brazier','gate_engine','ancient_well','wood_fence'].includes(kind)) {
+        scale=clamp(scale,.96,1.04);
+      }
       const flip=random()<.5;
+      if (this.props.some(p => Math.hypot((p.x-x)/(p.rx+rx*scale+24),(p.y-y)/(p.ry+ry*scale+24)) < 1)) return;
       const angle=kind==='wood_fence' ? (flip ? .56 : -.56) : 0;
       const prop={kind,x,y,width:width*scale,rx:rx*scale,ry:ry*scale,anchor,flip,cos:Math.cos(angle),sin:Math.sin(angle)};
       this.props.push(prop);
@@ -89,15 +96,20 @@ export class Terrain {
           this.cells[j*COLS+i].push(prop);
     };
     // Recognisable landmarks flank the clearing where a campaign begins.
-    place(region.props[0],1115,622,1.05);
-    place(region.props[1],1460,832,.88);
+    if(chapter==='central_state') {
+      place('ancient_pavilion',960,548,1);
+      place('stone_lantern',1125,666,1);
+    } else {
+      place(region.props[0],1115,622,1.05);
+      place(region.props[1],1460,832,.88);
+    }
     place(region.props[2],1372,495,.92);
     for(let y=100;y<WORLD_HEIGHT-50;y+=205) for(let x=95;x<WORLD_WIDTH-50;x+=225) {
       const px=x+(random()-.5)*120, py=y+(random()-.5)*105;
       if(px<155 || py<140 || px>WORLD_WIDTH-155 || py>WORLD_HEIGHT-140 || Math.hypot(px-1280,py-720)<123 || region.route(px,py)<-5 ||
          this.props.some(p=>Math.hypot(p.x-px,p.y-py)<153)) continue;
       let kind=region.props[Math.floor(random()*region.props.length)];
-      if (kind==='ancient_pavilion' && this.props.some(p=>p.kind===kind && Math.hypot(p.x-px,p.y-py)<440)) {
+      if (kind==='ancient_pavilion' && (px<290 || px>WORLD_WIDTH-290 || py<265 || region.route(px,py)<120 || this.props.some(p=>p.kind===kind && Math.hypot(p.x-px,p.y-py)<720))) {
         kind='tree_pine';
       }
       place(kind,px,py,.73+random()*.4);

@@ -134,6 +134,7 @@ export interface MinionEntity {
 }
 
 export interface DropEntity {
+  droppedAt?: number;
   id: number;
   type: 'exp' | 'gold' | 'potion' | 'gear';
   x: number;

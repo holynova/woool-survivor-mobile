@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createServer} from 'vite';
 
 const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',logLevel:'silent'});
@@ -17,6 +18,22 @@ try {
     return {g,boss};
   }
   for(const chapter of Object.keys(WOOWL_CHAPTERS)){
+    const key=WOOWL_CHAPTERS[chapter].bossSpriteKey;
+    const frames=path=>JSON.parse(readFileSync(new URL('../public/assets/woool/'+path,import.meta.url))).frames;
+    const original=frames('monsters/m_'+key+'@0.json');
+    const hd=frames('bosses/'+key+'.json');
+    assert.deepEqual(Object.keys(hd).sort(),Object.keys(original).filter(k=>k.includes('/walk/')).sort(),key+' animations');
+    const packed=[];
+    for(const [name,spec] of Object.entries(hd)){
+      const source=original[name], r=spec.frame;
+      for(const prop of ['sourceSize','spriteSourceSize']) {
+        for(const [axis,value] of Object.entries(source[prop])) assert.equal(spec[prop][axis],value*2,name+' '+axis);
+      }
+      assert.equal(r.w,source.frame.w*2);assert.equal(r.h,source.frame.h*2);
+      assert.ok(r.x>=2 && r.y>=2 && r.x+r.w+2<=2048 && r.y+r.h+2<=2048);
+      assert.ok(packed.every(a=>r.x>=a.x+a.w+4 || a.x>=r.x+r.w+4 || r.y>=a.y+a.h+4 || a.y>=r.y+r.h+4),name+' atlas bleed');
+      packed.push(r);
+    }
     const kit=bossKits[chapter];
     const {g,boss}=encounter(chapter);
     // Use the runtime scheduler to enter all three casts and return to the first.

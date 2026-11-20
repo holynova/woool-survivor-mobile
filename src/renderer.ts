@@ -10,6 +10,15 @@ import { handAnchor } from './config/handAnchors';
 import { gearInfo, gearColors } from './config/equipment';
 import { assetUrl } from './utils';
 import { buildField, preloadField } from './battlefield';
+import { FOOT_OFFSET } from './terrain';
+
+// Logical scale and original foot pivot in the walk rig, independent of atlas density.
+const bossRig: Record<string, {scale:number; foot:number}> = {
+  '20082':{scale:1.95,foot:43}, '20111':{scale:2.38,foot:34},
+  '20046':{scale:2.5,foot:35}, '20038':{scale:2.25,foot:53},
+  '20072':{scale:2.26,foot:29}, '20085':{scale:1.68,foot:45},
+  hydra_king:{scale:2.85,foot:20}, sky_pontiff:{scale:2.43,foot:21}
+};
 
 // Map 0-7 direction to 5-direction digit + flipX
 export function getDirInfo(dir: number): { dirDigit: number; flipX: boolean } {
@@ -75,7 +84,8 @@ export class BattleScene extends Phaser.Scene {
     d: Phaser.Input.Keyboard.Key;
   };
 
-  private updateCover!: (player: {x:number; y:number}) => void;
+  private pixelRatio=1;
+  private updateCover!: ReturnType<typeof buildField>;
   private currentChapterId = '';
   private currentHeroClass = '';
 
@@ -98,9 +108,11 @@ export class BattleScene extends Phaser.Scene {
     const hero=HERO_ATLAS_MAP[game.heroClass];
     atlas(hero,'assets/woool/heroes/r_'+hero.slice(5));
     const monsters = new Set(chapter.monsterPool.map(monster => WOOWL_MONSTERS[monster.typeId].spriteKey));
-    for (const monster of game.monsters) if (monster.spriteKey) monsters.add(monster.spriteKey);
+    for (const monster of game.monsters) if (monster.spriteKey && !monster.isBoss) monsters.add(monster.spriteKey);
     monsters.add(WOOWL_MONSTERS[chapter.rangedType].spriteKey);
-    monsters.add(chapter.bossSpriteKey);
+    for (const id of chapter.lordTypes) monsters.add(WOOWL_MONSTERS[id].spriteKey);
+    const bossId=chapter.bossSpriteKey;
+    this.load.atlas('boss_'+bossId,assetUrl('assets/woool/bosses/'+bossId+'.webp'),assetUrl('assets/woool/bosses/'+bossId+'.json'));
     if (game.heroClass==='taoist') for (const summon of ['20081','20082','20085']) monsters.add(summon);
     for (const id of monsters) atlas('m_'+id,'assets/woool/monsters/m_'+id);
     atlas('level_up','assets/woool/effects/level_up');
@@ -131,10 +143,11 @@ export class BattleScene extends Phaser.Scene {
 
     const resizeField = () => {
       const cam=this.cameras.main;
-      const zoom=Math.max(.75,cam.width/WORLD_WIDTH,cam.height/WORLD_HEIGHT);
+      this.pixelRatio=cam.width/Math.max(1,this.game.canvas.getBoundingClientRect().width);
+      const zoom=Math.max(.75*this.pixelRatio,cam.width/WORLD_WIDTH,cam.height/WORLD_HEIGHT);
       cam.setZoom(zoom);
       for (const layer of [this.joystickGfx,this.screenUiGfx]) {
-        layer.setScale(1/zoom).setPosition(cam.width/2*(1-1/zoom),cam.height/2*(1-1/zoom));
+        layer.setScale(this.pixelRatio/zoom).setPosition(cam.width/2*(1-1/zoom),cam.height/2*(1-1/zoom));
       }
     };
     resizeField();
@@ -171,13 +184,13 @@ export class BattleScene extends Phaser.Scene {
 
     // Floating Touch / Pointer Joystick Setup
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.touchOrigin = { x: pointer.x, y: pointer.y };
-      this.touchCurrent = { x: pointer.x, y: pointer.y };
+      this.touchOrigin = { x: pointer.x/this.pixelRatio, y: pointer.y/this.pixelRatio };
+      this.touchCurrent = { x: pointer.x/this.pixelRatio, y: pointer.y/this.pixelRatio };
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (this.touchOrigin && pointer.isDown) {
-        this.touchCurrent = { x: pointer.x, y: pointer.y };
+        this.touchCurrent = { x: pointer.x/this.pixelRatio, y: pointer.y/this.pixelRatio };
       }
     });
 
@@ -193,7 +206,7 @@ export class BattleScene extends Phaser.Scene {
     this.input.on('gameout',resetJoystick);
     this.game.events.on('clear-drag',resetJoystick);
     this.cameras.main.centerOn(game.player.x, game.player.y);
-    this.updateCover(game.player);
+    this.updateCover(game.player,game.getActiveBoss());
     this.syncPlayer();
     this.syncMonsters();
     this.syncMinions();
@@ -239,7 +252,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // Sync Player Visuals
-    this.updateCover(game.player);
+    this.updateCover(game.player,game.getActiveBoss());
     this.syncPlayer();
 
     // Sync Monsters (with giant Elites, Supreme Boss & Glowing under-foot auras)
@@ -405,23 +418,25 @@ export class BattleScene extends Phaser.Scene {
         }
       }
 
-      const traveled=Math.hypot(sprite.x-m.x,sprite.y-m.y);
-      sprite.setPosition(m.x, m.y);
+      const rig=m.isBoss ? bossRig[m.spriteKey!] : undefined;
+      const actorY=rig ? m.y+FOOT_OFFSET-rig.foot*rig.scale : m.y;
+      const traveled=Math.hypot(sprite.x-m.x,sprite.y-actorY);
+      sprite.setPosition(m.x, actorY);
       sprite.setDepth(m.y);
 
-      const atlasKey = `m_${m.spriteKey || '20081'}`;
+      const atlasKey = (rig ? 'boss_' : 'm_')+(m.spriteKey || '20081');
       const { dirDigit, flipX } = getDirInfo(m.dir ?? 4);
       const singleView = !this.anims.exists(atlasKey+'_walk_0');
       sprite.setFlipX(singleView ? (m.dir ?? 4) < 4 : flipX);
 
       // Scale & Imposing deterring aura
-      const finalScale = m.scale || (m.isBoss ? 2.85 : (m.isElite ? 1.75 : 1.0));
-      sprite.setScale(finalScale);
+      const finalScale = rig?.scale ?? m.scale ?? 1;
+      sprite.setScale(rig ? finalScale/2 : finalScale);
 
       // Shadow & Glowing ground aura circle under feet
       if (m.isBoss) {
-        this.playerShadow.fillStyle(0x000000, 0.55);
-        this.playerShadow.fillEllipse(m.x, m.y + 40, 120, 40);
+        this.playerShadow.fillStyle(0x221b15,.15).fillEllipse(m.x+4,m.y+FOOT_OFFSET,85,25);
+        this.playerShadow.fillStyle(0x221b15,.18).fillEllipse(m.x,m.y+FOOT_OFFSET,58,15);
       } else if (m.isElite) {
         this.playerShadow.fillStyle(0x000000, 0.5);
         this.playerShadow.fillEllipse(m.x, m.y + 32, 75, 26);
@@ -512,18 +527,26 @@ export class BattleScene extends Phaser.Scene {
         if (!sprite) {
           sprite = this.dropPool.pop() || this.add.sprite(d.x, d.y, tex);
           sprite.setTexture(tex);
-          sprite.setOrigin(0.5, 0.7);
+          sprite.setOrigin(.5,.78);
           sprite.setVisible(true);
           this.dropSprites.set(d.id, sprite);
         } else if (sprite.texture.key !== tex) {
           sprite.setTexture(tex);
         }
 
-        sprite.setScale(d.type === 'potion' ? .52 : d.type === 'gear' ? .62 : 1);
-        sprite.setTint(d.type === 'gear' ? gearColors[d.value] : 0xffffff);
-        const bob = Math.sin(game.clock * 4.5 + d.id) * 2.2;
-        sprite.setPosition(d.x, d.y + bob);
-        sprite.setDepth(d.y - 12);
+        sprite.setScale(d.type === 'potion' ? .43 : d.type === 'gear' ? .62 : 1);
+        sprite.clearTint();
+        const feet=d.y+FOOT_OFFSET;
+        const landed=d.droppedAt===undefined ? 1 : Phaser.Math.Clamp((game.clock-d.droppedAt)/.24,0,1);
+        const lift=(1-landed)*(11+18*landed);
+        const radius=Math.max(4,Math.min(13,sprite.displayWidth*.28));
+        this.playerShadow.fillStyle(0x211c17,.18).fillEllipse(d.x+1,feet+1,radius*2.5,radius*.85);
+        this.playerShadow.fillStyle(0x211c17,.10+.14*landed).fillEllipse(d.x,feet,radius*1.55,radius*.48);
+        if (d.type==='gear' && d.value>0) {
+          this.playerShadow.fillStyle(gearColors[d.value],.18).fillEllipse(d.x,feet,radius*2.2,radius*.8);
+        }
+        sprite.setPosition(d.x,feet-lift);
+        sprite.setDepth(d.y);
       }
     }
 
@@ -914,7 +937,7 @@ export class BattleScene extends Phaser.Scene {
         const bx = m.x - barW / 2;
         const sprite = this.monsterSprites.get(m.id);
         if (!sprite) continue;
-        const by = m.y + (sprite.frame.y - sprite.displayOriginY) * sprite.scaleY - barH - 5;
+        const by = sprite.y + (sprite.frame.y - sprite.displayOriginY) * sprite.scaleY - barH - 5;
 
         // Bar frame
         gfx.fillStyle(0x000000, 0.75);
@@ -976,8 +999,8 @@ export class BattleScene extends Phaser.Scene {
     const viewR = cam.worldView.x + cam.worldView.width;
     const viewT = cam.worldView.y;
     const viewB = cam.worldView.y + cam.worldView.height;
-    const screenW = cam.width;
-    const screenH = cam.height;
+    const screenW = cam.width/this.pixelRatio;
+    const screenH = cam.height/this.pixelRatio;
     const screenCenterX = screenW / 2;
     const screenCenterY = screenH / 2;
 
@@ -1083,8 +1106,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // 2. Monster Walking Animations
-    for (const atlasKey of this.textures.getTextureKeys().filter(key => key.startsWith('m_'))) {
-      const id = atlasKey.slice(2);
+    for (const atlasKey of this.textures.getTextureKeys().filter(key => key.startsWith('m_') || key.startsWith('boss_'))) {
+      const id = atlasKey.slice(atlasKey.indexOf('_')+1);
       for (let dir = 0; dir <= 4; dir++) {
         this.createAnimFromAtlas(`${atlasKey}_walk_${dir}`, atlasKey, `${id}/walk/${dir}`, 8, -1);
         this.createAnimFromAtlas(`${atlasKey}_idle_${dir}`, atlasKey, `${id}/stand/${dir}`, 4, -1);
@@ -1133,6 +1156,12 @@ export class BattleScene extends Phaser.Scene {
 }
 
 export function bootField(onProgress:(value:number)=>void,onReady:()=>void,onError:()=>void) {
+  const host=document.getElementById('world')!;
+  const backingSize=()=>{
+    const w=Math.max(1,host.clientWidth), h=Math.max(1,host.clientHeight);
+    const density=Math.max(1,Math.min(devicePixelRatio || 1,2,Math.sqrt(1800000/(w*h))));
+    return {width:Math.round(w*density),height:Math.round(h*density)};
+  };
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent: 'world',
@@ -1140,9 +1169,8 @@ export function bootField(onProgress:(value:number)=>void,onReady:()=>void,onErr
     pixelArt: false,
     antialias: true,
     scale: {
-      mode: Phaser.Scale.RESIZE,
-      width: window.innerWidth,
-      height: window.innerHeight
+      mode: Phaser.Scale.FIT,
+      ...backingSize()
     },
     scene: [BattleScene],
     audio: { noAudio: true },
@@ -1150,6 +1178,14 @@ export function bootField(onProgress:(value:number)=>void,onReady:()=>void,onErr
   };
 
   return new Phaser.Game({...config, callbacks:{preBoot(engine){
+    engine.events.once('ready',()=>{
+      const observer=new ResizeObserver(()=>{
+        const {width,height}=backingSize();
+        if(engine.scale.width!==width || engine.scale.height!==height) engine.scale.setGameSize(width,height);
+      });
+      observer.observe(host);
+      engine.events.once('destroy',()=>observer.disconnect());
+    });
     engine.events.on('field-progress',onProgress);
     engine.events.once('field-ready',onReady);
     engine.events.once('field-error',onError);
