@@ -82,6 +82,10 @@ export interface ActivePassiveState {
 }
 
 export interface MonsterEntity {
+  bossCast?: import('./boss').BossCast;
+  bossStep?: number;
+  stunGuardUntil?: number;
+  summonedBy?: number;
   aim?: { dx:number; dy:number; releaseAt:number };
   nextShotAt?: number;
   id: number;

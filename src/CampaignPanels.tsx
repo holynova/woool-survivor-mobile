@@ -17,7 +17,7 @@ export function Records({journal}:{journal:Journal}) {
     {!journal.recent.length && <p>暂无战绩</p>}
     {journal.recent.map(r=><div className="entry" key={r.id}><b>{chapters[r.chapter]?.name.split(' · ')[0]} · {{victory:'通关',game_over:'阵亡',retired:'撤离'}[r.outcome]}</b>
       <small>{jobs[r.role]} · {curves[r.difficulty]?.name} · {time(r.seconds)} · {r.kills} 斩 · 入库 {r.coins}</small></div>)}
-    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.8</a></p></>;
+    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.9</a></p></>;
 }
 export function TrainingPanel({journal,buy}:{journal:Journal;buy:(id:keyof Training)=>void}) {
   return <><p>库银 {journal.bank} · 下局生效</p>

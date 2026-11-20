@@ -23,6 +23,7 @@ import {
   evaluateCurveState
 } from './config/curves';
 import { missiles, FIRST_RANGED_WAVE, rangedWave, type EnemyShot, type MissileKind } from './ranged';
+import { bossKits, CHARGE_RADIUS, CHARGE_TIME, enraged, planBossCast, slowMonster, stunMonster } from './boss';
 import { attackZones, type DangerZone } from './encounters';
 import { gearInfo, freshTraining, type Equipment, type Training } from './config/equipment';
 import { sound } from './audio';
@@ -316,6 +317,14 @@ export class GameEngine {
         ? WOOWL_SKILLS[choice.id].upgrades.find(u => u.level === choice.level)?.description ?? def.desc
         : def.desc;
     }
+    for (const boss of this.monsters.filter(m=>m.isBoss && m.bossStep===undefined)) {
+      if ((boss.stunUntil??0)>this.clock && boss.stunGuardUntil===undefined) {
+        boss.stunUntil=this.clock+Math.min(.45,(boss.stunUntil!-this.clock)*.25);
+        boss.stunGuardUntil=boss.stunUntil+1.8;
+      }
+      if ((boss.slowUntil??0)>this.clock) boss.slowUntil=this.clock+(boss.slowUntil!-this.clock)*.4;
+      boss.bossStep=0;
+    }
     this.enemyShots = state.enemyShots ?? [];
     this.nextRangedWaveAt = state.nextRangedWaveAt ?? Math.max(FIRST_RANGED_WAVE, this.clock + 4);
     if (!state.encounterVersion) {
@@ -472,15 +481,15 @@ export class GameEngine {
       const nearby=shot.radius ? this.monsters.filter(m=>m.hp>0 && Math.hypot(m.x-shot.targetX,m.y-shot.targetY)<=shot.radius) : [];
       if(kind==='meteor') {
         for(const m of nearby) {
-          if(level>=3){m.slowUntil=this.clock+2.5;this.burn(m,damage*.35,3);}
-          if(level===5)m.stunUntil=Math.max(m.stunUntil??0,this.clock+.9);
+          if(level>=3){slowMonster(m, this.clock, 2.5);this.burn(m,damage*.35,3);}
+          if(level===5)stunMonster(m, this.clock, .9);
           this.damageEnemy(m,damage,true);
         }
       } else {
         if(target){
           if(kind==='fireball' && level>=3)this.burn(target,damage*.18,2);
-          if(kind==='ghost_fire_curse' && level>=3)target.slowUntil=this.clock+1.5;
-          if(kind==='talisman' && level>=4)target.stunUntil=this.clock+1;
+          if(kind==='ghost_fire_curse' && level>=3)slowMonster(target, this.clock, 1.5);
+          if(kind==='talisman' && level>=4)stunMonster(target, this.clock, 1);
           if(kind==='talisman' && level===5)target.armorBreak=Math.max(target.armorBreak??0,.3);
           const crit=kind==='fireball' ? level>=4 || Math.random()<.25 : level>=4 || kind==='shinsu_hit';
           this.damageEnemy(target,kind==='fireball' && crit ? Math.round(damage*1.5) : damage,crit);
@@ -524,7 +533,7 @@ export class GameEngine {
         hitIds.add(mainTarget.id);
         this.damageEnemy(mainTarget, finalDamage, true);
         if (level >= 3) {
-          mainTarget.stunUntil = Math.max(mainTarget.stunUntil || 0, this.clock + 0.8);
+          stunMonster(mainTarget, this.clock, 0.8);
         }
         this.effects.push({
           id: this.nextEntityId++,
@@ -541,7 +550,7 @@ export class GameEngine {
         );
         for (const sMob of shockSplash) {
           hitIds.add(sMob.id);
-          if(level===5)sMob.stunUntil=Math.max(sMob.stunUntil??0,this.clock+.8);
+          if(level===5)stunMonster(sMob, this.clock, .8);
           this.damageEnemy(sMob, Math.round(finalDamage * 0.58), false);
         }
 
@@ -557,7 +566,7 @@ export class GameEngine {
             const dmgRatio = level >= 4 ? 0.85 : 0.65;
             this.damageEnemy(c, Math.round(finalDamage * dmgRatio), level >= 4);
             if (level >= 3) {
-              c.stunUntil = Math.max(c.stunUntil || 0, this.clock + 0.5);
+              stunMonster(c, this.clock, 0.5);
             }
             this.effects.push({
               id: this.nextEntityId++,
@@ -593,11 +602,10 @@ export class GameEngine {
 
       const knockbackDist = level >= 2 ? 75 : 52;
       for (const t of targets) {
-        if(level===5)t.slowUntil=Math.max(t.slowUntil??0,this.clock+2);
+        if(level===5)slowMonster(t, this.clock, 2);
         this.damageEnemy(t, finalDamage, true);
         const angle = Math.atan2(t.y - this.player.y, t.x - this.player.x);
-        const push = t.isBoss ? knockbackDist * 0.25 : knockbackDist;
-        this.terrain.move(t, Math.cos(angle) * push, Math.sin(angle) * push, monsterFootprint(t));
+        this.repel(t,angle,knockbackDist);
       }
       return true;
     }
@@ -669,11 +677,10 @@ export class GameEngine {
       for (const m of inRange) {
         if (level >= 4) m.armorBreak = Math.max(m.armorBreak || 0, 0.35);
         this.damageEnemy(m, Math.round(finalDamage * (hits === 2 ? 1.45 : 1.0)), true);
-        if(level===5)m.stunUntil=Math.max(m.stunUntil??0,this.clock+1);
+        if(level===5)stunMonster(m, this.clock, 1);
         if (m.hp > 0) {
           const angle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
-          const push = m.isBoss ? 25 : level >= 3 ? 95 : 65;
-          this.terrain.move(m, Math.cos(angle) * push, Math.sin(angle) * push, monsterFootprint(m));
+          this.repel(m,angle,level >= 3 ? 95 : 65);
         }
       }
       return true;
@@ -703,7 +710,7 @@ export class GameEngine {
         m.poisonDps = Math.max(m.poisonDps || 0, Math.round(finalDamage * 0.85));
         m.armorBreak = Math.max(m.armorBreak || 0, level >= 4 ? 0.45 : 0.2);
         if (level >= 4) {
-          m.slowUntil = Math.max(m.slowUntil || 0, this.clock + 4.0);
+          slowMonster(m, this.clock, 4.0);
         }
         this.damageEnemy(m, finalDamage+detonation, false);
       }
@@ -749,7 +756,7 @@ export class GameEngine {
       const inPath = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= impactR);
       for (const m of inPath) {
         if(level===5)m.armorBreak=Math.max(m.armorBreak??0,.35);
-        m.stunUntil = Math.max(m.stunUntil || 0, this.clock + 0.7);
+        stunMonster(m, this.clock, 0.7);
         this.damageEnemy(m, Math.round(finalDamage * (level >= 4 ? 1.45 : 1.0)), true);
       }
       return true;
@@ -786,11 +793,10 @@ export class GameEngine {
       });
       const nearby = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= finalArea);
       for (const m of nearby) {
-        if(level===5)m.slowUntil=Math.max(m.slowUntil??0,this.clock+3);
+        if(level===5)slowMonster(m, this.clock, 3);
         this.damageEnemy(m, finalDamage, false);
         const angle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
-        const push = m.isBoss ? 25 : 85;
-        this.terrain.move(m, Math.cos(angle) * push, Math.sin(angle) * push, monsterFootprint(m));
+        this.repel(m,angle,85);
       }
       return true;
     }
@@ -840,8 +846,8 @@ export class GameEngine {
       const inRange = this.monsters.filter(m => Math.hypot(m.x - target.x, m.y - target.y) <= iceRadius);
       for (const m of inRange) {
         const shatter=level===5 && (m.slowUntil??0)>this.clock;
-        m.slowUntil = Math.max(m.slowUntil || 0, this.clock + (level >= 4 ? 3.5 : 2.2));
-        if (level >= 4) m.stunUntil = Math.max(m.stunUntil || 0, this.clock + 1.2);
+        slowMonster(m, this.clock, level >= 4 ? 3.5 : 2.2);
+        if (level >= 4) stunMonster(m, this.clock, 1.2);
         this.damageEnemy(m, shatter ? Math.round(finalDamage*1.6) : finalDamage, level >= 3);
       }
       return true;
@@ -874,7 +880,7 @@ export class GameEngine {
         if(level===5)target.armorBreak=Math.max(target.armorBreak??0,.30);
         this.damageEnemy(target, finalDamage, level >= 3);
         const stunDuration = level >= 3 ? 0.8 : 0.4;
-        target.stunUntil = Math.max(target.stunUntil || 0, this.clock + stunDuration);
+        stunMonster(target, this.clock, stunDuration);
       }
       return true;
     }
@@ -948,8 +954,7 @@ export class GameEngine {
           if (diff <= 1.2 || diff >= Math.PI * 2 - 1.2 || (level===5 && Math.abs(diff-Math.PI)<=1.2)) {
             const isCrit = level >= 4 && Math.random() < 0.35;
             this.damageEnemy(m, isCrit ? Math.round(finalDamage * 1.6) : finalDamage, isCrit);
-            const push = m.isBoss ? pushDist * 0.2 : pushDist;
-            this.terrain.move(m, Math.cos(mAngle) * push, Math.sin(mAngle) * push, monsterFootprint(m));
+            this.repel(m,mAngle,pushDist);
           }
         }
       }
@@ -1059,9 +1064,9 @@ export class GameEngine {
       const thunderRadius = finalArea * (level >= 2 ? 1.04 : 1.0);
       for (const m of this.monsters) {
         if (Math.hypot(m.x - target.x, m.y - target.y) <= thunderRadius) {
-          if(level===5)m.slowUntil=Math.max(m.slowUntil??0,this.clock+4);
+          if(level===5)slowMonster(m, this.clock, 4);
           this.damageEnemy(m, finalDamage, true);
-          m.stunUntil = Math.max(m.stunUntil || 0, this.clock + 1.2);
+          stunMonster(m, this.clock, 1.2);
         }
       }
       return true;
@@ -1080,10 +1085,10 @@ export class GameEngine {
       const inRange = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= finalArea);
       if(level===5)this.player.hp=Math.min(this.player.maxHp,this.player.hp+Math.min(24,inRange.length*2));
       for (const m of inRange) {
-        m.stunUntil = Math.max(m.stunUntil || 0, this.clock + (level >= 4 ? 2.8 : 1.4));
+        stunMonster(m, this.clock, level >= 4 ? 2.8 : 1.4);
         this.damageEnemy(m, finalDamage, true);
         const ang = Math.atan2(m.y - this.player.y, m.x - this.player.x);
-        this.terrain.move(m, Math.cos(ang)*90, Math.sin(ang)*90, monsterFootprint(m));
+        this.repel(m,ang,90);
       }
       return true;
     }
@@ -1228,6 +1233,10 @@ export class GameEngine {
     // Move monsters & handle diverse AI behaviors
     const meleeAttackers: MonsterEntity[] = [];
     for (const m of this.monsters) {
+      if (m.bossCast) {
+        this.advanceBossCast(m);
+        continue;
+      }
       if (m.stunUntil && this.clock < m.stunUntil) {
         m.aim = undefined;
         continue;
@@ -1241,7 +1250,7 @@ export class GameEngine {
       // A slower walk at every difficulty, including monsters restored from older saves.
       let moveSpeed = m.speed * .74;
       if (m.slowUntil && this.clock < m.slowUntil) {
-        moveSpeed *= 0.55;
+        moveSpeed *= m.isBoss ? .82 : .55;
       }
 
       // Differentiated movement AI:
@@ -1276,10 +1285,25 @@ export class GameEngine {
         }
       }
 
-      if ((m.isBoss || m.isElite) && dist < 460) {
+      if (m.isBoss && dist < 325) {
         m.dashCd = (m.dashCd ?? 3) - dt;
         if (m.dashCd <= 0) {
-          m.dashCd = m.isBoss ? 4.8 : 7;
+          const summonSlots=Math.max(0,4-this.monsters.filter(guard=>guard.summonedBy===m.id).length);
+          const cast = planBossCast(this.chapterId,m,this.player,this.terrain,this.clock,summonSlots);
+          m.bossCast = cast;
+          m.bossStep = ((m.bossStep ?? 0)+1)%3;
+          m.dashCd = enraged(m) ? 2.8 : 4;
+          if (cast.kind === 'ground') {
+            const zones=attackZones(this.chapterId,m,this.player,this.clock);
+            this.dangers.push(...zones);
+            cast.releaseAt=Math.max(...zones.map(z=>z.impact));
+          }
+          continue;
+        }
+      } else if (m.isElite && !m.isBoss && dist < 460) {
+        m.dashCd = (m.dashCd ?? 3) - dt;
+        if (m.dashCd <= 0) {
+          m.dashCd = 7;
           this.dangers.push(...attackZones(this.chapterId, m, this.player, this.clock));
         }
       }
@@ -1309,6 +1333,44 @@ export class GameEngine {
       const hitChunk = Math.max(4, Math.round(lead.damage * 0.36 * swarmMult));
       this.hitPlayer(hitChunk, lead);
     }
+  }
+
+  private advanceBossCast(m:MonsterEntity) {
+    const cast = m.bossCast;
+    if (!cast || this.clock < cast.releaseAt) return;
+    if (cast.kind === 'volley') {
+      const kit=bossKits[this.chapterId];
+      for (let i=0;i<cast.count;i++) {
+        const angle=cast.angle+(i-(cast.count-1)/2)*kit.spread;
+        this.enemyShots.push({kind:kit.missile,x:m.x,y:m.y,dx:Math.cos(angle),dy:Math.sin(angle),
+          remaining:400,damage:Math.round(m.damage*.55)});
+      }
+    } else if (cast.kind === 'summon') {
+      const alive=this.monsters.filter(other=>other.summonedBy===m.id).length;
+      for(const point of cast.points.slice(0,Math.max(0,4-alive))) {
+        const minion=this.spawnMonsterFromChapter(false,undefined,cast.species,point);
+        minion.summonedBy=m.id;
+      }
+    } else if (cast.kind === 'charge') {
+      const progress=Math.min(1,(this.clock-cast.releaseAt)/CHARGE_TIME);
+      const lastX=m.x,lastY=m.y;
+      m.x=cast.from.x+(cast.to.x-cast.from.x)*progress;
+      m.y=cast.from.y+(cast.to.y-cast.from.y)*progress;
+      const dx=m.x-lastX, dy=m.y-lastY;
+      const t=Math.max(0,Math.min(1,((this.player.x-lastX)*dx+(this.player.y-lastY)*dy)/(dx*dx+dy*dy || 1)));
+      if (!cast.hit && Math.hypot(this.player.x-lastX-t*dx,this.player.y-lastY-t*dy)<=CHARGE_RADIUS) {
+        cast.hit=true;
+        this.hitPlayer(Math.round(m.damage*.8),m);
+      }
+      if (progress<1) return;
+    }
+    m.bossCast=undefined;
+  }
+
+  private repel(m:MonsterEntity, angle:number, distance:number) {
+    if (m.bossCast) return;
+    const push=distance*(m.isBoss ? .10 : 1);
+    this.terrain.move(m,Math.cos(angle)*push,Math.sin(angle)*push,monsterFootprint(m));
   }
 
   private rangedAttack(m: MonsterEntity, kind: MissileKind, dx: number, dy: number, distance: number) {
@@ -1372,7 +1434,7 @@ export class GameEngine {
     return weightedPool[0]?.typeId || 'scarecrow';
   }
 
-  private spawnMonsterFromChapter(isElite = false, customDist?: number, fixedType?: string) {
+  private spawnMonsterFromChapter(isElite = false, customDist?: number, fixedType?: string, point?: {x:number;y:number}) {
     const chap = WOOWL_CHAPTERS[this.chapterId] || WOOWL_CHAPTERS.sunset_island;
     const curve = WOOWL_DIFFICULTY_CURVES[this.difficultyId] || WOOWL_DIFFICULTY_CURVES.standard;
     const bossTime = this.getBossTriggerTime();
@@ -1399,9 +1461,9 @@ export class GameEngine {
     const finalSpeed = Math.round(arch.speed * state.speedMult * eliteSpeedMult);
     const finalExp = Math.max(1, Math.round((arch.exp * (isElite ? 4 : 1) + state.expBonusFlat) * curve.expMult));
 
-    const spawn = {x,y};
+    const spawn = point ? {...point} : {x,y};
     this.terrain.settle(spawn, monsterFootprint({radius:isElite ? Math.round(arch.radius*1.45) : arch.radius}));
-    this.monsters.push({
+    const monster:MonsterEntity={
       id: this.nextEntityId++,
       typeId: arch.id,
       name: isElite ? `【精英】${arch.name}` : arch.name,
@@ -1416,7 +1478,8 @@ export class GameEngine {
       scale: isElite ? 1.7 : 1.0,
       isElite,
       spriteKey: arch.spriteKey
-    });
+    };
+    this.monsters.push(monster);
 
     if (isElite) {
       this.addDamageNumber(x, y - 20, `【精英 ${arch.name} 来袭】`, '#c084fc', true);
@@ -1431,6 +1494,7 @@ export class GameEngine {
       };
       sound.playBossAlert();
     }
+    return monster;
   }
 
   private spawnMilestoneElite(tier: 1 | 2 | 3) {
@@ -1499,6 +1563,7 @@ export class GameEngine {
     this.monsters.push({
       id: this.nextEntityId++,
       typeId: 'boss',
+      bossStep: 0,
       name: chap.bossName,
       x:spawn.x,
       y:spawn.y,
@@ -1737,8 +1802,7 @@ export class GameEngine {
         const d = Math.hypot(m.x - this.player.x, m.y - this.player.y);
         if (d < 130 && d > 0) {
           const ang = Math.atan2(m.y - this.player.y, m.x - this.player.x);
-          const push = m.isBoss ? 35 : 105;
-          this.terrain.move(m, Math.cos(ang) * push, Math.sin(ang) * push, monsterFootprint(m));
+          this.repel(m,ang,105);
         }
       }
 

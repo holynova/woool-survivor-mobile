@@ -1,3 +1,4 @@
+import { bossKits } from '../boss';
 import { WOOWL_CHAPTERS } from './chapters';
 import { ELITE_MILESTONES, WOOWL_MONSTERS } from './curves';
 
@@ -80,5 +81,5 @@ for (const chapter of chapters) chapter.lordTypes.forEach((type,i) => {
     tactic:'近身会蓄力震地。离开预警范围，再回身输出。'});
 });
 for (const c of chapters) entries.push({id:'boss-'+c.id,group:'首领',name:c.bossName.split(' · ').at(-1)!,
-  sprite:c.bossSpriteKey,where:shortName(c.name),when:'10:00 登场',tactic:bossTactics[c.id]});
+  sprite:c.bossSpriteKey,where:shortName(c.name),when:'10:00 登场',tactic:bossTactics[c.id]+' '+bossKits[c.id].volley+'要横移，'+bossKits[c.id].special+(bossKits[c.id].minion?'会召来近卫。':'要让开冲撞路线。')+'半血后出招加快。'});
 export const bestiary = entries;

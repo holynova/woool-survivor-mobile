@@ -1,6 +1,7 @@
 import {WOOWL_CHAPTERS} from './config/chapters';
 import {WOOWL_MONSTERS} from './config/curves';
 import {WOOWL_SKILLS} from './config/skills';
+import { bossKits, CHARGE_RADIUS } from './boss';
 import { missiles } from './ranged';
 import Phaser from 'phaser';
 import { game, calcDirection, WORLD_WIDTH, WORLD_HEIGHT } from './game';
@@ -859,6 +860,33 @@ export class BattleScene extends Phaser.Scene {
     const fx = this.fxGraphics;
     fx.clear();
     for (const m of game.monsters) {
+      const cast=m.bossCast;
+      if (cast?.kind==='charge') {
+        const {from,to}=cast, angle=Math.atan2(to.y-from.y,to.x-from.x);
+        const nx=-Math.sin(angle)*CHARGE_RADIUS, ny=Math.cos(angle)*CHARGE_RADIUS;
+        const alpha=.25+.20*Phaser.Math.Clamp(1-(cast.releaseAt-game.clock)/1.1,0,1);
+        ground.fillStyle(0xe95334,alpha);
+        ground.beginPath();
+        ground.moveTo(from.x+nx,from.y+ny);
+        ground.lineTo(to.x+nx,to.y+ny);
+        ground.arc(to.x,to.y,CHARGE_RADIUS,angle+Math.PI/2,angle-Math.PI/2,true);
+        ground.lineTo(from.x-nx,from.y-ny);
+        ground.arc(from.x,from.y,CHARGE_RADIUS,angle-Math.PI/2,angle+Math.PI/2,true);
+        ground.closePath().fillPath();
+      } else if (cast?.kind==='summon') {
+        const pulse=1+.15*Math.sin(game.clock*12);
+        for(const p of cast.points) {
+          ground.fillStyle(0xd877fb,.26).fillEllipse(p.x,p.y,52*pulse,28*pulse);
+          ground.fillStyle(0xf8c5ff,.52).fillEllipse(p.x,p.y,20,9);
+        }
+      } else if (cast?.kind==='volley') {
+        const color=missiles[bossKits[game.chapterId].missile].color;
+        const charge=Phaser.Math.Clamp(1-(cast.releaseAt-game.clock)/1.05,0,1);
+        const x=m.x+Math.cos(cast.angle)*13, y=m.y-12+Math.sin(cast.angle)*13;
+        fx.fillStyle(color,.30).fillCircle(x,y,10+charge*11);
+        fx.fillStyle(color,.95).fillCircle(x,y,5+charge*5);
+        fx.fillStyle(0xfff4d6,.95).fillCircle(x,y,2+charge*3);
+      }
       const kind = WOOWL_MONSTERS[m.typeId]?.missile;
       if (!kind || !m.aim) continue;
       const {windup,color} = missiles[kind];

@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import type Phaser from 'phaser';
 import {game} from './game';
+import {enraged} from './boss';
 import {Codex} from './Codex';
 import {WOOWL_CHAPTERS as chapters} from './config/chapters';
 import {WOOWL_SKILLS as skills} from './config/skills';
@@ -152,7 +153,7 @@ export function App(){
     </section></div>}
     {!inLobby&&<>
       <div className="top"><span>{time(game.clock)}</span><button aria-label="暂停" onClick={()=>{field.current?.events.emit('clear-drag');pause()}}>Ⅱ</button></div>
-      {boss&&<div className="boss">{boss.name}<i style={{width:meter(boss.hp,boss.maxHp)}}/></div>}
+      {boss&&<div className="boss"><div className="boss-title"><span>{boss.name.split(' · ').at(-1)}</span><small>{boss.bossCast?.name ?? (enraged(boss)?'狂暴':'')}</small></div><i style={{width:meter(boss.hp,boss.maxHp)}}/></div>}
       {game.alertBanner&&<div className="alert">{game.alertBanner.title}</div>}
       <footer><div className="hud"><div className="health"><small>气血</small><strong>{Math.ceil(player.hp)} / {player.maxHp}</strong><i style={{width:meter(player.hp,player.maxHp)}}/></div>
         <div className="slots">{game.activeSkills.map(s=><div className="slot" key={s.id} title={skills[s.id].name}><img src={media('skills',skills[s.id].iconId)} alt={skills[s.id].name}/><i style={{height:meter(s.cdTimer,s.maxCd||skills[s.id].cooldown)}}/><b>{s.level}</b></div>)}</div></div>
