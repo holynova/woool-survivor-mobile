@@ -5,6 +5,11 @@ import type {
 } from '../types';
 
 export const ELITE_MILESTONES = [150, 300, 450] as const;
+export const MILESTONE_LORDS = [
+  {name:'【境霸·狂暴尸王将】', spriteKey:'20082', scale:1.95, baseHp:3600, baseDmg:32, exp:80, radius:48},
+  {name:'【境霸·赤炎魔战傀】', spriteKey:'20085', scale:2.2, baseHp:8200, baseDmg:42, exp:160, radius:56},
+  {name:'【境霸·通天修罗卫】', spriteKey:'20082', scale:2.4, baseHp:15000, baseDmg:52, exp:300, radius:64}
+] as const;
 export const AWAKENING_TIME = ELITE_MILESTONES[0];
 
 export const WOOWL_MONSTERS: Record<string, MonsterArchetype> = {

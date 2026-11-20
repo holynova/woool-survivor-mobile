@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState,useSyncExternalStore} from 'react';
 import type Phaser from 'phaser';
 import {game} from './game';
+import {Codex} from './Codex';
 import {WOOWL_CHAPTERS as chapters} from './config/chapters';
 import {WOOWL_SKILLS as skills,WOOWL_PASSIVES as passives} from './config/skills';
 import {WOOWL_DIFFICULTY_CURVES as curves} from './config/curves';
@@ -23,7 +24,7 @@ export function App(){
   const [role,setRole]=useState<HeroClass>('warrior');
   const [chapter,setChapter]=useState('sunset_island');
   const [difficulty,setDifficulty]=useState<DifficultyCurveId>('standard');
-  const [sheet,setSheet]=useState<'maps'|'curves'|'records'|'training'|'loadout'|'retire'|'new'|null>(null);
+  const [sheet,setSheet]=useState<'maps'|'curves'|'records'|'training'|'loadout'|'retire'|'new'|'codex'|null>(null);
   const [journal,setJournal]=useState(readJournal);
   const journalRef=useRef(journal);
   const [storageError,setStorageError]=useState(false);
@@ -118,7 +119,7 @@ export function App(){
   return <main>
     {storageError&&<div role="status" className="storage-error">存档失败，请保留此页。</div>}
     {inLobby&&<section className="home" onClickCapture={()=>{if(progress===null)sound.playBgm('menu')}} style={{backgroundImage:'linear-gradient(180deg,#12141316 12%,#11150fe6 61%,#0f120fff 91%),url('+map.bgImage+')'}}>
-      <header className="mast"><span>传 世</span><nav><button disabled={progress!==null} onClick={()=>setSheet('records')}>战绩</button><button disabled={progress!==null} onClick={()=>setSheet('training')}>修行</button><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></nav></header>
+      <header className="mast"><span>传 世</span><nav><button disabled={progress!==null} onClick={()=>setSheet('codex')}>图鉴</button><button disabled={progress!==null} onClick={()=>setSheet('records')}>战绩</button><button disabled={progress!==null} onClick={()=>setSheet('training')}>修行</button><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></nav></header>
       <div className="home-body">
         <h1>传奇世界<span>幸存者</span></h1>
         <button className="map-choice" onClick={()=>setSheet('maps')} disabled={progress!==null}><small>出征地图</small><strong>{map.name.split(' · ')[0]}</strong><span>换图 ›</span></button>
@@ -129,6 +130,7 @@ export function App(){
         {journal.saved&&<button className="resume" onClick={()=>void start(journal.saved!)}>继续上局 · {chapters[journal.saved.chapterId].name.split(' · ')[0]} {time(journal.saved.clock)} ›</button>}</>:<div className="load">准备战场 · {progress}%<progress max="100" value={progress}/></div>}
       </div>
     </section>}
+    {sheet==='codex' && <Codex role={inLobby?role:game.heroClass} close={closeSheet}/>}
     {(sheet==='maps'||sheet==='curves')&&<div className="veil"><section className="panel" role="dialog" aria-label={sheet==='maps'?'选择地图':'选择难度'}>
       <div className="panel-head"><h2>{sheet==='maps'?'选择地图':'选择难度'}</h2><button aria-label="关闭" onClick={closeSheet}>×</button></div>
       {sheet==='maps'?Object.values(chapters).map(c=><button className="row" aria-pressed={chapter===c.id} key={c.id} onClick={()=>{setChapter(c.id);closeSheet()}}><img loading="lazy" src={c.bgImage.replace('/maps/','/maps/thumbs/')} alt=""/><span><b>{c.name}</b><small>{journal.cleared.includes(c.id)?'已通关 · ':''}{c.bossName}</small></span></button>):
@@ -157,7 +159,7 @@ export function App(){
         <><small>{map.name} · {game.wavePhaseName}</small><Head title="战斗暂停" close={resume}/>
           <p>第 {defenseMinutes} 分钟迎战{map.bossName}。随身 {player.gold} 金。</p>
           <button className="primary" onClick={resume}>继续战斗</button><div className="pause-grid">
-          <button disabled={game.upgradeChoices.length>0} onClick={()=>setSheet('loadout')}>行囊与技能</button><button onClick={leaveSaved}>存档回城</button>
+          <button disabled={game.upgradeChoices.length>0} onClick={()=>setSheet('loadout')}>行囊与技能</button><button onClick={()=>setSheet('codex')}>图鉴</button><button onClick={leaveSaved}>存档回城</button>
           <button onClick={toggleSound}>{muted?'声音关':'声音开'}</button><button onClick={()=>setMonsterSound(sound.toggleMonsters())}>怪物音效{monsterSound?'开':'关'}</button>
           </div><button className="resume" onClick={()=>setSheet('retire')}>结束本局</button></>:
         <><small>{map.name}</small><Head title={game.phase==='victory'?(allCleared?'六境平定':'守关成功'):'此战已尽'} close={lobby}/><p>存活 {time(game.clock)} · 击败 {player.kills} · 等级 {player.level}<br/>入库 {player.gold} 金 · 已通关 {journal.cleared.length}/6 章</p>

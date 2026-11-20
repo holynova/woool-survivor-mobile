@@ -17,7 +17,7 @@ import { WOOWL_SKILLS, WOOWL_PASSIVES } from './config/skills';
 import { WOOWL_CHAPTERS } from './config/chapters';
 import {
   AWAKENING_TIME,
-  ELITE_MILESTONES,
+  ELITE_MILESTONES, MILESTONE_LORDS,
   WOOWL_MONSTERS,
   WOOWL_DIFFICULTY_CURVES,
   evaluateCurveState
@@ -1372,31 +1372,7 @@ export class GameEngine {
     const x = Math.max(120, Math.min(WORLD_WIDTH - 120, this.player.x + Math.cos(angle) * dist));
     const y = Math.max(120, Math.min(WORLD_HEIGHT - 120, this.player.y + Math.sin(angle) * dist));
 
-    let name = '【境霸·狂暴尸王将】';
-    let spriteKey = '20082';
-    let scale = 1.95;
-    let baseHp = 3600;
-    let baseDmg = 32;
-    let exp = 80;
-    let radius = 48;
-
-    if (tier === 2) {
-      name = '【境霸·赤炎魔战傀】';
-      spriteKey = '20085';
-      scale = 2.2;
-      baseHp = 8200;
-      baseDmg = 42;
-      exp = 160;
-      radius = 56;
-    } else if (tier === 3) {
-      name = '【境霸·通天修罗卫】';
-      spriteKey = '20082';
-      scale = 2.4;
-      baseHp = 15000;
-      baseDmg = 52;
-      exp = 300;
-      radius = 64;
-    }
+    const {name, spriteKey, scale, baseHp, baseDmg, exp, radius} = MILESTONE_LORDS[tier - 1];
 
     const hp = Math.round(baseHp * curve.hpMult * (1 + (chap.chapterDifficulty - 1) * 0.45));
     const dmg = Math.round(baseDmg * curve.dmgMult * (1 + (chap.chapterDifficulty - 1) * 0.35));
