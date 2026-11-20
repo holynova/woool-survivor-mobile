@@ -24,8 +24,8 @@ import { attackZones, type DangerZone } from './encounters';
 import { gearInfo, freshTraining, type Equipment, type Training } from './config/equipment';
 import { sound } from './audio';
 
-export const WORLD_WIDTH = 2560;
-export const WORLD_HEIGHT = 1440;
+import { chapterTerrain, monsterFootprint, PLAYER_RADIUS, WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
+export { WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
 
 function choiceTitle(name: string, level: number, isNew: boolean) {
   return isNew ? name + ' · 新' : name + ' · ' + level + '级';
@@ -52,6 +52,7 @@ export class GameEngine {
   phase: GamePhase = 'lobby';
   heroClass: HeroClass = 'wizard';
   chapterId = 'sunset_island';
+  terrain = chapterTerrain(this.chapterId);
   difficultyId: DifficultyCurveId = 'standard';
 
   runId = '';
@@ -183,6 +184,7 @@ export class GameEngine {
     this.player.moving = false;
     this.heroClass = heroClass;
     this.chapterId = chapterId;
+    this.terrain = chapterTerrain(chapterId);
     if (difficultyId) {
       this.difficultyId = difficultyId;
     }
@@ -266,6 +268,11 @@ export class GameEngine {
   restore(saved: ReturnType<GameEngine['snapshot']>) {
     const { milestones, ...state } = structuredClone(saved);
     Object.assign(this, state);
+    this.terrain = chapterTerrain(this.chapterId);
+    this.terrain.settle(this.player, PLAYER_RADIUS);
+    for (const m of this.monsters) this.terrain.settle(m, monsterFootprint(m));
+    for (const m of this.minions) this.terrain.settle(m, 11);
+    for (const d of this.drops) this.terrain.settle(d, 5);
     const guardLimit = this.activeSkills.some(s => s.id === 'summon_skeleton' && s.level >= 3) ? 2 : 1;
     let guards = 0;
     for (const m of this.minions) {
@@ -357,8 +364,7 @@ export class GameEngine {
     const len = Math.hypot(this.inputX, this.inputY);
     if (len > 0.05) {
       const step = this.player.speed * clampedDt;
-      this.player.x = Math.max(80, Math.min(WORLD_WIDTH - 80, this.player.x + (this.inputX / len) * step));
-      this.player.y = Math.max(80, Math.min(WORLD_HEIGHT - 80, this.player.y + (this.inputY / len) * step));
+      this.terrain.move(this.player, this.inputX / len * step, this.inputY / len * step);
       this.player.dir = calcDirection(this.inputX, this.inputY);
       this.player.moving = true;
     } else {
@@ -494,8 +500,7 @@ export class GameEngine {
         this.damageEnemy(t, finalDamage, true);
         const angle = Math.atan2(t.y - this.player.y, t.x - this.player.x);
         const push = t.isBoss ? knockbackDist * 0.25 : knockbackDist;
-        t.x = Math.max(80, Math.min(WORLD_WIDTH - 80, t.x + Math.cos(angle) * push));
-        t.y = Math.max(80, Math.min(WORLD_HEIGHT - 80, t.y + Math.sin(angle) * push));
+        this.terrain.move(t, Math.cos(angle) * push, Math.sin(angle) * push, monsterFootprint(t));
       }
       return true;
     }
@@ -610,8 +615,7 @@ export class GameEngine {
         if (m.hp > 0) {
           const angle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
           const push = m.isBoss ? 25 : level >= 3 ? 95 : 65;
-          m.x = Math.max(80, Math.min(WORLD_WIDTH - 80, m.x + Math.cos(angle) * push));
-          m.y = Math.max(80, Math.min(WORLD_HEIGHT - 80, m.y + Math.sin(angle) * push));
+          this.terrain.move(m, Math.cos(angle) * push, Math.sin(angle) * push, monsterFootprint(m));
         }
       }
       return true;
@@ -666,12 +670,8 @@ export class GameEngine {
       const angle = (this.player.dir / 8) * Math.PI * 2 - Math.PI / 2;
       const startX = this.player.x;
       const startY = this.player.y;
-      const clampedX = Math.max(80, Math.min(WORLD_WIDTH - 80, startX + Math.cos(angle) * dashDist));
-      const clampedY = Math.max(80, Math.min(WORLD_HEIGHT - 80, startY + Math.sin(angle) * dashDist));
+      this.terrain.move(this.player, Math.cos(angle)*dashDist, Math.sin(angle)*dashDist);
       const impactR = level >= 3 ? 160 : 125;
-
-      this.player.x = clampedX;
-      this.player.y = clampedY;
       this.player.invulnerableTime = Math.max(this.player.invulnerableTime, level >= 4 ? 0.7 : 0.4);
 
       sound.play(def.soundKey);
@@ -680,8 +680,8 @@ export class GameEngine {
         type: 'dash',
         x: startX,
         y: startY,
-        targetX: clampedX,
-        targetY: clampedY,
+        targetX: this.player.x,
+        targetY: this.player.y,
         dir: this.player.dir,
         radius: impactR,
         level
@@ -728,8 +728,7 @@ export class GameEngine {
         this.damageEnemy(m, finalDamage, false);
         const angle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
         const push = m.isBoss ? 25 : 85;
-        m.x = Math.max(80, Math.min(WORLD_WIDTH - 80, m.x + Math.cos(angle) * push));
-        m.y = Math.max(80, Math.min(WORLD_HEIGHT - 80, m.y + Math.sin(angle) * push));
+        this.terrain.move(m, Math.cos(angle) * push, Math.sin(angle) * push, monsterFootprint(m));
       }
       return true;
     }
@@ -906,8 +905,7 @@ export class GameEngine {
             const isCrit = level >= 4 && Math.random() < 0.35;
             this.damageEnemy(m, isCrit ? Math.round(finalDamage * 1.6) : finalDamage, isCrit);
             const push = m.isBoss ? pushDist * 0.2 : pushDist;
-            m.x = Math.max(80, Math.min(WORLD_WIDTH - 80, m.x + Math.cos(mAngle) * push));
-            m.y = Math.max(80, Math.min(WORLD_HEIGHT - 80, m.y + Math.sin(mAngle) * push));
+            this.terrain.move(m, Math.cos(mAngle) * push, Math.sin(mAngle) * push, monsterFootprint(m));
           }
         }
       }
@@ -1051,8 +1049,7 @@ export class GameEngine {
         m.stunUntil = Math.max(m.stunUntil || 0, this.clock + (level >= 4 ? 2.8 : 1.4));
         this.damageEnemy(m, finalDamage, true);
         const ang = Math.atan2(m.y - this.player.y, m.x - this.player.x);
-        m.x += Math.cos(ang) * 90;
-        m.y += Math.sin(ang) * 90;
+        this.terrain.move(m, Math.cos(ang)*90, Math.sin(ang)*90, monsterFootprint(m));
       }
       return true;
     }
@@ -1077,8 +1074,7 @@ export class GameEngine {
         m.dir = calcDirection(dx, dy);
 
         if (dist > 54) {
-          m.x += (dx / dist) * m.speed * dt;
-          m.y += (dy / dist) * m.speed * dt;
+          this.terrain.move(m, dx / dist * m.speed * dt, dy / dist * m.speed * dt, 11, m.id%2 ? 1 : -1);
         } else if (m.attackCd <= 0) {
           this.damageEnemy(target, m.damage, true);
           const cleaveR = m.type === 'shinsu' ? 95 : 65;
@@ -1104,8 +1100,7 @@ export class GameEngine {
         const distToPlayer = Math.hypot(dx, dy);
         if (distToPlayer > 85) {
           m.dir = calcDirection(dx, dy);
-          m.x += (dx / distToPlayer) * m.speed * dt;
-          m.y += (dy / distToPlayer) * m.speed * dt;
+          this.terrain.move(m, dx / distToPlayer * m.speed * dt, dy / distToPlayer * m.speed * dt, 11, m.id%2 ? 1 : -1);
         }
       }
     }
@@ -1126,6 +1121,7 @@ export class GameEngine {
       targetEnemyId: null,
       attackCd: 0.45
     };
+    this.terrain.settle(minion, 11);
     this.minions.push(minion);
     this.effects.push({
       id: this.nextEntityId++,
@@ -1241,8 +1237,7 @@ export class GameEngine {
       }
 
       if (dist > m.radius + 14) {
-        m.x = Math.max(70, Math.min(WORLD_WIDTH - 70, m.x + vx * dt));
-        m.y = Math.max(70, Math.min(WORLD_HEIGHT - 70, m.y + vy * dt));
+        this.terrain.move(m, vx*dt, vy*dt, monsterFootprint(m), m.id%2 ? 1 : -1);
       } else {
         meleeAttackers.push(m);
       }
@@ -1327,12 +1322,14 @@ export class GameEngine {
     const finalSpeed = Math.round(arch.speed * state.speedMult * eliteSpeedMult);
     const finalExp = Math.max(1, Math.round((arch.exp * (isElite ? 4 : 1) + state.expBonusFlat) * curve.expMult));
 
+    const spawn = {x,y};
+    this.terrain.settle(spawn, monsterFootprint({radius:isElite ? Math.round(arch.radius*1.45) : arch.radius}));
     this.monsters.push({
       id: this.nextEntityId++,
       typeId: arch.id,
       name: isElite ? `【精英】${arch.name}` : arch.name,
-      x,
-      y,
+      x:spawn.x,
+      y:spawn.y,
       hp: finalHp,
       maxHp: finalHp,
       speed: finalSpeed,
@@ -1397,12 +1394,14 @@ export class GameEngine {
     const hp = Math.round(baseHp * curve.hpMult * (1 + (chap.chapterDifficulty - 1) * 0.45));
     const dmg = Math.round(baseDmg * curve.dmgMult * (1 + (chap.chapterDifficulty - 1) * 0.35));
 
+    const spawn = {x,y};
+    this.terrain.settle(spawn, monsterFootprint({radius:radius}));
     this.monsters.push({
       id: this.nextEntityId++,
       typeId: 'elite_milestone',
       name,
-      x,
-      y,
+      x:spawn.x,
+      y:spawn.y,
       hp,
       maxHp: hp,
       speed: Math.round(108 * curve.speedMult),
@@ -1440,12 +1439,14 @@ export class GameEngine {
     const hp = Math.round(chap.bossHp * curve.bossHpMult);
     const dmg = Math.round(chap.bossDamage * curve.bossDmgMult);
 
+    const spawn = {x,y};
+    this.terrain.settle(spawn, monsterFootprint({radius:76}));
     this.monsters.push({
       id: this.nextEntityId++,
       typeId: 'boss',
       name: chap.bossName,
-      x,
-      y,
+      x:spawn.x,
+      y:spawn.y,
       hp,
       maxHp: hp,
       speed: Math.round(122 * curve.speedMult),
@@ -1546,6 +1547,7 @@ export class GameEngine {
 
   private killEnemy(m: MonsterEntity) {
     this.monsters = this.monsters.filter(e => e.id !== m.id);
+    const firstDrop = this.drops.length;
     this.player.kills++;
     if (!m.isBoss && (m.isElite || Math.random() < 0.018)) {
       const slot = Math.random() < .5 ? 'weapon' : 'armor';
@@ -1600,6 +1602,7 @@ export class GameEngine {
         tier: 1
       });
     }
+    for (let i=firstDrop;i<this.drops.length;i++) this.terrain.settle(this.drops[i],5);
   }
 
   private updateDrops(dt: number) {
@@ -1675,8 +1678,7 @@ export class GameEngine {
         if (d < 130 && d > 0) {
           const ang = Math.atan2(m.y - this.player.y, m.x - this.player.x);
           const push = m.isBoss ? 35 : 105;
-          m.x = Math.max(80, Math.min(WORLD_WIDTH - 80, m.x + Math.cos(ang) * push));
-          m.y = Math.max(80, Math.min(WORLD_HEIGHT - 80, m.y + Math.sin(ang) * push));
+          this.terrain.move(m, Math.cos(ang) * push, Math.sin(ang) * push, monsterFootprint(m));
         }
       }
 

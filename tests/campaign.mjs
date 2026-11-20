@@ -12,6 +12,43 @@ try {
   const memory=new Map();
   globalThis.localStorage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)};
   const setSeed=n=>{let state=n;Math.random=()=>((state=(Math.imul(1664525,state)+1013904223)>>>0)/4294967296)};
+  const {Terrain,PLAYER_RADIUS}=await server.ssrLoadModule('/src/terrain.ts');
+  for (const id of Object.keys(chapters)) {
+    const terrain=new Terrain(id);
+    assert.deepEqual(terrain.props,new Terrain(id).props,id+' stable terrain');
+    assert.equal(terrain.settle({x:1280,y:720},PLAYER_RADIUS),false,id+' clear start');
+    for (const prop of terrain.props) {
+      // Approach along the local minor axis, including diagonal fences, in one dash.
+      const distance=prop.ry+PLAYER_RADIUS+28;
+      const point={x:prop.x+prop.sin*distance,y:prop.y-prop.cos*distance};
+      terrain.move(point,-prop.sin*distance*2,prop.cos*distance*2);
+      const normal=-(point.x-prop.x)*prop.sin+(point.y-prop.y)*prop.cos;
+      assert.ok(normal<=-prop.ry-PLAYER_RADIUS+.01,id+' pass-through '+prop.kind);
+    }
+    // Flood-fill navigable sample points from the opening clearing.
+    const step=32, free=new Set();
+    for(let y=80;y<=1360;y+=step) for(let x=80;x<=2480;x+=step)
+      if(!terrain.settle({x,y},PLAYER_RADIUS)) free.add(x+','+y);
+    const queue=[[1296,720]];
+    assert.ok(free.delete('1296,720'));
+    for(let i=0;i<queue.length;i++){
+      const [x,y]=queue[i];
+      for(const [dx,dy] of [[step,0],[-step,0],[0,step],[0,-step]]){
+        const nx=x+dx,ny=y+dy;
+        if(!free.has(nx+','+ny))continue;
+        const p={x,y};terrain.move(p,dx,dy);
+        if(Math.hypot(p.x-nx,p.y-ny)<.1){free.delete(nx+','+ny);queue.push([nx,ny]);}
+      }
+    }
+    assert.equal(free.size,0,id+' isolated walkable area');
+    const g=new GameEngine();g.start('warrior',id,'standard');
+    const save=structuredClone(g.snapshot());
+    const ob=terrain.props[0];
+    Object.assign(save.player,{x:ob.x,y:ob.y});
+    g.restore(save);
+    assert.ok(Math.hypot(g.player.x-ob.x,g.player.y-ob.y)>ob.ry);
+    assert.equal(terrain.settle({...g.player},PLAYER_RADIUS),false);
+  }
   // Reviewed against the shipped PNG strips, including spells with similar names.
   const visuals = {
     fireball:[2001,'fireball'], lightning_strike:[2002,'lightning_strike'], hellfire:[2007,'hellfire'],

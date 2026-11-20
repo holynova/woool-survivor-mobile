@@ -7,6 +7,7 @@ import type { EffectEvent, MonsterEntity, MinionEntity, DropEntity, DamageNumber
 import { handAnchor } from './config/handAnchors';
 import { gearInfo, gearColors } from './config/equipment';
 import { assetUrl } from './utils';
+import { buildField, preloadField } from './battlefield';
 
 // Map 0-7 direction to 5-direction digit + flipX
 export function getDirInfo(dir: number): { dirDigit: number; flipX: boolean } {
@@ -72,6 +73,7 @@ export class BattleScene extends Phaser.Scene {
     d: Phaser.Input.Keyboard.Key;
   };
 
+  private updateCover!: (player: {x:number; y:number}) => void;
   private currentChapterId = '';
   private currentHeroClass = '';
 
@@ -83,7 +85,7 @@ export class BattleScene extends Phaser.Scene {
     const chapter=WOOWL_CHAPTERS[game.chapterId];
     this.load.on('progress', (value:number)=>this.game.events.emit('field-progress',value));
     this.load.on('loaderror', ()=>this.game.events.emit('field-error'));
-    this.load.image('ground',chapter.bgImage);
+    preloadField(this,game.terrain);
     for(let tier=1;tier<=3;tier++) this.load.image('coin_'+tier, assetUrl('assets/woool/items/gold_coin_'+tier+'.png'));
     for (const slot of ['weapon','armor'] as const) {
       const icons = new Set([0,1].map(rank => gearInfo(game.heroClass,slot,rank).icon));
@@ -113,10 +115,10 @@ export class BattleScene extends Phaser.Scene {
     this.registerAllAnimations();
 
     this.currentChapterId=game.chapterId;
-    this.add.image(0,0,'ground').setOrigin(0).setDisplaySize(WORLD_WIDTH,WORLD_HEIGHT).setDepth(-200);
+    this.updateCover=buildField(this,game.terrain);
     // 3. World Boundaries
     this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-    this.cameras.main.setZoom(1);
+
 
     // 4. Graphics Layers
     this.groundFx = this.add.graphics().setDepth(4);
@@ -126,6 +128,18 @@ export class BattleScene extends Phaser.Scene {
     this.uiGraphics = this.add.graphics().setDepth(3000);
     this.screenUiGfx = this.add.graphics().setDepth(3500).setScrollFactor(0);
     this.joystickGfx = this.add.graphics().setDepth(4500).setScrollFactor(0);
+
+    const resizeField = () => {
+      const cam=this.cameras.main;
+      const zoom=Math.max(.75,cam.width/WORLD_WIDTH,cam.height/WORLD_HEIGHT);
+      cam.setZoom(zoom);
+      for (const layer of [this.joystickGfx,this.screenUiGfx]) {
+        layer.setScale(1/zoom).setPosition(cam.width/2*(1-1/zoom),cam.height/2*(1-1/zoom));
+      }
+    };
+    resizeField();
+    this.scale.on('resize',resizeField);
+    this.events.once('shutdown',()=>this.scale.off('resize',resizeField));
 
     // 5. Player Shield Sprite
     this.playerShieldSprite = this.add.sprite(game.player.x, game.player.y, '__WHITE');
@@ -142,7 +156,7 @@ export class BattleScene extends Phaser.Scene {
     this.playerSprite.setDepth(100);
 
     // Camera follow player smoothly
-    this.cameras.main.startFollow(this.playerSprite, true, 0.1, 0.1);
+    this.cameras.main.startFollow(this.playerSprite, false, 0.1, 0.1);
 
     // Keyboard inputs
     if (this.input.keyboard) {
@@ -179,6 +193,7 @@ export class BattleScene extends Phaser.Scene {
     this.input.on('gameout',resetJoystick);
     this.game.events.on('clear-drag',resetJoystick);
     this.cameras.main.centerOn(game.player.x, game.player.y);
+    this.updateCover(game.player);
     this.syncPlayer();
     this.syncMonsters();
     this.syncMinions();
@@ -224,6 +239,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // Sync Player Visuals
+    this.updateCover(game.player);
     this.syncPlayer();
 
     // Sync Monsters (with giant Elites, Supreme Boss & Glowing under-foot auras)
@@ -984,8 +1000,8 @@ export class BattleScene extends Phaser.Scene {
       if ((m.isBoss || m.isElite) && m.hp > 0) {
         const isOffscreen = m.x < viewL || m.x > viewR || m.y < viewT || m.y > viewB;
         if (isOffscreen) {
-          const worldDx = m.x - game.player.x;
-          const worldDy = m.y - game.player.y;
+          const worldDx = m.x - cam.worldView.centerX;
+          const worldDy = m.y - cam.worldView.centerY;
           const ang = Math.atan2(worldDy, worldDx);
 
           // Margin from screen boundary
@@ -1136,8 +1152,8 @@ export function bootField(onProgress:(value:number)=>void,onReady:()=>void,onErr
     type: Phaser.AUTO,
     parent: 'world',
     backgroundColor: '#0c0f12',
-    pixelArt: true,
-    antialias: false,
+    pixelArt: false,
+    antialias: true,
     scale: {
       mode: Phaser.Scale.RESIZE,
       width: window.innerWidth,
