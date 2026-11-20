@@ -29,6 +29,9 @@ import { sound } from './audio';
 import { chapterTerrain, monsterFootprint, PLAYER_RADIUS, WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
 export { WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
 
+const RUN_REROLLS = 3;
+const SWAP_INTERVAL = 4;
+
 const flightSpeed: Record<FlightKind, number> = {
   fireball: 390, talisman: 320, ghost_fire_curse: 345, meteor: 610, shinsu_hit: 345
 };
@@ -73,6 +76,7 @@ export class GameEngine {
   bossSpawned = false;
   bossDefeated = false;
 
+  rerolls = RUN_REROLLS;
   private eliteTimer = 0;
   private spawnedMilestones = new Set<number>();
   private spawnAccumulator = 0;
@@ -127,6 +131,7 @@ export class GameEngine {
     description: string;
     iconId: number;
     quality?: SkillQuality;
+    swap?: boolean;
   }> = [];
 
   version = 0;
@@ -183,6 +188,7 @@ export class GameEngine {
   }
 
   start(heroClass: HeroClass, chapterId: string, difficultyId?: DifficultyCurveId, training = freshTraining()) {
+    this.rerolls = RUN_REROLLS;
     this.runId = globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
     this.training = {...training};
     this.equipment = {weapon: 0, armor: 0};
@@ -263,7 +269,7 @@ export class GameEngine {
 
   snapshot() {
     return {
-      tempoVersion: 2, flights:this.flights, runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
+      tempoVersion: 2, rerolls:this.rerolls, flights:this.flights, runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
       phase: this.phase, clock: this.clock, wave: this.wave, wavePhaseName: this.wavePhaseName,
       waveProgress: this.waveProgress, waveTimer: this.waveTimer, bossSpawned: this.bossSpawned, bossDefeated: this.bossDefeated,
       eliteTimer: this.eliteTimer, milestones: [...this.spawnedMilestones], spawnAccumulator: this.spawnAccumulator,
@@ -277,6 +283,8 @@ export class GameEngine {
   restore(saved: ReturnType<GameEngine['snapshot']>) {
     const { milestones, ...state } = structuredClone(saved);
     Object.assign(this, state);
+    this.rerolls = Number.isInteger(state.rerolls) ? Math.max(0,Math.min(RUN_REROLLS,state.rerolls)) : RUN_REROLLS;
+    this.player.areaBonus = this.activePassives.reduce((sum,p)=>sum+(WOOWL_PASSIVES[p.id]?.effect.areaMod??0)*p.level,0);
     this.terrain = chapterTerrain(this.chapterId);
     this.terrain.settle(this.player, PLAYER_RADIUS);
     for (const m of this.monsters) this.terrain.settle(m, monsterFootprint(m));
@@ -311,7 +319,7 @@ export class GameEngine {
   }
 
   availableReplacements() {
-    return Object.values(WOOWL_SKILLS).filter(s => s.classType === this.heroClass
+    return Object.values(WOOWL_SKILLS).filter(s => (s.classType === this.heroClass || s.classType==='all')
       && !this.activeSkills.some(active => active.id === s.id)
       && (s.quality !== 'legendary' || this.player.level >= 9)
       && (s.quality !== 'mythic' || this.player.level >= 6));
@@ -328,6 +336,12 @@ export class GameEngine {
       this.activeSkills[index] = {id: def.id, level: 1, maxCd: def.cooldown, cdTimer: def.cooldown};
     } else this.activeSkills.splice(index, 1);
 
+    this.removeSkillEffects(id);
+    this.emit();
+    return true;
+  }
+
+  private removeSkillEffects(id:string) {
     if (id === 'shinsu_summon') this.minions = this.minions.filter(m => m.type !== 'shinsu');
     if (id === 'enhanced_skeleton') this.minions = this.minions.filter(m => m.type !== 'enhanced_skeleton');
     if (id === 'summon_skeleton') {
@@ -338,8 +352,6 @@ export class GameEngine {
       this.player.shieldUntil = 0;
       this.thornRatio = 0;
     }
-    this.emit();
-    return true;
   }
 
   getActiveBoss(): MonsterEntity | undefined {
@@ -474,7 +486,7 @@ export class GameEngine {
 
   private triggerSkill(id: string, level: number, def: typeof WOOWL_SKILLS[string]): boolean {
     const damageMultiplier = (1 + this.player.damageBonus) * (1 + (level - 1) * 0.36);
-    const areaMultiplier = (1 + this.player.areaBonus) * (1 + (level - 1) * 0.18);
+    const areaMultiplier = 1 + this.player.areaBonus + (level - 1) * .03;
     const finalDamage = Math.round(def.damage * damageMultiplier);
     const finalArea = def.area * areaMultiplier;
 
@@ -544,7 +556,7 @@ export class GameEngine {
     }
 
     if (id === 'moon_blade') {
-      const reach = finalArea * (level >= 3 ? 1.2 : 1.0);
+      const reach = finalArea * (level >= 3 ? 1.04 : 1.0);
       const targets = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= reach);
       if (targets.length === 0) return false;
 
@@ -622,7 +634,7 @@ export class GameEngine {
     }
 
     if (id === 'hell_thunder') {
-      const reach = finalArea * (level >= 4 ? 1.35 : level >= 2 ? 1.18 : 1.0);
+      const reach = finalArea * (level >= 4 ? 1.06 : level >= 2 ? 1.03 : 1.0);
       const inRange = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= reach);
       if (inRange.length === 0) return false;
 
@@ -654,7 +666,7 @@ export class GameEngine {
       const target = this.findNearestEnemy(this.player.x, this.player.y, def.range);
       if (!target) return false;
 
-      const cloudRadius = finalArea * (level >= 2 ? 1.25 : 1.0);
+      const cloudRadius = finalArea * (level >= 2 ? 1.04 : 1.0);
       const inRange = this.monsters.filter(m => Math.hypot(m.x - target.x, m.y - target.y) <= cloudRadius);
       if (inRange.length === 0) return false;
 
@@ -701,7 +713,7 @@ export class GameEngine {
       const startX = this.player.x;
       const startY = this.player.y;
       this.terrain.move(this.player, Math.cos(angle)*dashDist, Math.sin(angle)*dashDist);
-      const impactR = level >= 3 ? 160 : 125;
+      const impactR = level >= 3 ? 113 : 103;
       this.player.invulnerableTime = Math.max(this.player.invulnerableTime, level >= 4 ? 0.7 : 0.4);
 
       sound.play(def.soundKey);
@@ -783,7 +795,7 @@ export class GameEngine {
       });
 
       const burstMult = level >= 4 ? 1.8 : 1.45;
-      const cleaveR = level >= 3 ? 115 : 80;
+      const cleaveR = level >= 3 ? 88 : 80;
       const hitList = this.monsters.filter(m => Math.hypot(m.x - target.x, m.y - target.y) <= cleaveR);
       for (const m of hitList) {
         this.damageEnemy(m, Math.round(finalDamage * burstMult * (level===5 && (m.burnUntil??0)>this.clock ? 1.6 : 1)), true);
@@ -799,7 +811,7 @@ export class GameEngine {
       const target = this.findNearestEnemy(this.player.x, this.player.y, def.range);
       if (!target) return false;
       sound.play(def.soundKey);
-      const iceRadius = finalArea * (level >= 3 ? 1.3 : 1.0);
+      const iceRadius = finalArea * (level >= 3 ? 1.05 : 1.0);
       this.effects.push({
         id: this.nextEntityId++,
         type: 'ice_roar',
@@ -895,7 +907,7 @@ export class GameEngine {
     }
 
     if (id === 'attack_slash') {
-      const hitRadius = level >= 3 ? 120 : 85;
+      const hitRadius = level >= 3 ? 95 : 85;
       const target = this.findNearestEnemy(this.player.x,this.player.y,hitRadius);
       if (!target) return false;
 
@@ -1027,7 +1039,7 @@ export class GameEngine {
         level
       });
 
-      const thunderRadius = def.area * (level >= 2 ? 1.4 : 1.0);
+      const thunderRadius = finalArea * (level >= 2 ? 1.04 : 1.0);
       for (const m of this.monsters) {
         if (Math.hypot(m.x - target.x, m.y - target.y) <= thunderRadius) {
           if(level===5)m.slowUntil=Math.max(m.slowUntil??0,this.clock+4);
@@ -1575,6 +1587,7 @@ export class GameEngine {
   }
 
   private updateDrops(dt: number) {
+    let coinCount=0, coinTier=1;
     const pickupDist = this.player.pickupRange;
     if (this.drops.length > 320 && Math.floor(this.clock)!==Math.floor(this.clock-dt)) {
       const piles = new Map<string, DropEntity>();
@@ -1602,10 +1615,12 @@ export class GameEngine {
         if (dist <= 32 || dist <= flySpeed * dt) {
           if (d.type === 'exp') {
             this.gainExp(d.value);
-            sound.playCoinPickup(d.tier || 1);
+            coinCount++;
+            coinTier=Math.max(coinTier,d.tier || 1);
           } else if (d.type === 'gold') {
             this.player.gold += d.value;
-            sound.playCoinPickup(d.tier || 1);
+            coinCount++;
+            coinTier=Math.max(coinTier,d.tier || 1);
           } else if (d.type === 'gear' && d.slot) {
             const info = gearInfo(this.heroClass, d.slot, d.value);
             if (d.value > this.equipment[d.slot]) {
@@ -1617,7 +1632,8 @@ export class GameEngine {
               this.player.gold += value;
               this.addDamageNumber(this.player.x, this.player.y, '售 +' + value, '#e6c57c');
             }
-            sound.playCoinPickup(2);
+            coinCount++;
+            coinTier=Math.max(coinTier,2);
           } else if (d.type === 'potion') {
             const healAmt = d.value || 40;
             this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
@@ -1625,10 +1641,11 @@ export class GameEngine {
             this.addDamageNumber(this.player.x, this.player.y, `+${healAmt} 气血`, '#44ff44');
           }
           this.drops.splice(i, 1);
-          if (this.phase !== 'battle') return;
+          if (this.phase !== 'battle') break;
         }
       }
     }
+    if (coinCount) sound.playCoinPickup(coinTier,coinCount);
   }
 
   gainExp(amount: number) {
@@ -1672,7 +1689,27 @@ export class GameEngine {
     }
   }
 
-  private generateUpgradeChoices() {
+  rerollChoices() {
+    if (this.phase!=='level_up' || this.rerolls<=0) return false;
+    const previous=new Set(this.upgradeChoices.map(c=>c.id));
+    const next=this.generateUpgradeChoices(previous);
+    if (!next.some(c=>!previous.has(c.id))) return false;
+    this.rerolls--;
+    this.upgradeChoices=next;
+    sound.play('ui_click');
+    this.emit();
+    return true;
+  }
+
+  keepLoadout() {
+    if (this.phase!=='level_up' || !this.upgradeChoices.every(c=>c.swap) || !this.upgradeChoices.length) return;
+    this.player.gold+=60;
+    this.upgradeChoices=[];
+    this.phase='battle';
+    this.emit();
+  }
+
+  private generateUpgradeChoices(previous=new Set<string>()) {
     const choices: Array<{
       item: GameEngine['upgradeChoices'][0];
       weight: number;
@@ -1713,28 +1750,23 @@ export class GameEngine {
       }
     }
 
-    // New skills unlock
-    if (this.activeSkills.length < 5) {
-      const availableSkills = Object.values(WOOWL_SKILLS).filter(s => s.classType === this.heroClass || s.classType === 'all');
-      const unownedSkills = availableSkills.filter(s => !this.activeSkills.some(a => a.id === s.id));
-      for (const s of unownedSkills) {
-        const w = getQualityWeight(s.quality, playerLvl);
-        if (w > 0) {
-          choices.push({
-            item: {
-              type: 'skill',
-              id: s.id,
-              isNew: true,
-              level: 1,
-              title: choiceTitle(s.name, 1, true),
-              description: s.desc,
-              iconId: s.iconId,
-              quality: s.quality
-            },
-            weight: w
-          });
-        }
+    const selected: typeof this.upgradeChoices = [];
+    const full=this.activeSkills.length>=5;
+    const swapOptions: typeof selected = [];
+    for (const skill of this.availableReplacements()) {
+      const weight=getQualityWeight(skill.quality,playerLvl);
+      if (!weight) continue;
+      const item: typeof selected[number]={type:'skill',id:skill.id,isNew:true,level:1,
+        title:choiceTitle(skill.name,1,true),description:skill.desc,iconId:skill.iconId,quality:skill.quality};
+      if (!full) choices.push({item,weight});
+      else if (playerLvl%SWAP_INTERVAL===0 && (skill.quality==='mythic' || skill.quality==='legendary')) {
+        swapOptions.push({...item,swap:true});
       }
+    }
+    if (swapOptions.length) {
+      const unseen=swapOptions.filter(c=>!previous.has(c.id));
+      const pool=unseen.length ? unseen : swapOptions;
+      selected.push(pool[Math.floor(Math.random()*pool.length)]);
     }
 
     // Passives
@@ -1759,35 +1791,43 @@ export class GameEngine {
     }
 
     // Weighted selection of 3 unique choices
-    const selected: typeof this.upgradeChoices = [];
     const pool = [...choices];
 
     while (selected.length < 3 && pool.length > 0) {
-      const totalWeight = pool.reduce((sum, c) => sum + c.weight, 0);
+      const unseen = pool.filter(c=>!previous.has(c.item.id));
+      const candidates = unseen.length ? unseen : pool;
+      const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
       let rand = Math.random() * totalWeight;
       let pickedIdx = 0;
-      for (let i = 0; i < pool.length; i++) {
-        rand -= pool[i].weight;
+      for (let i = 0; i < candidates.length; i++) {
+        rand -= candidates[i].weight;
         if (rand <= 0) {
           pickedIdx = i;
           break;
         }
       }
-      selected.push(pool[pickedIdx].item);
-      pool.splice(pickedIdx, 1);
+      const picked=candidates[pickedIdx];
+      selected.push(picked.item);
+      pool.splice(pool.indexOf(picked), 1);
     }
 
     return selected;
   }
 
-  selectUpgrade(choice: GameEngine['upgradeChoices'][0]) {
+  selectUpgrade(choice: GameEngine['upgradeChoices'][0], oldSkill?:string) {
     if (this.phase !== 'level_up' || !this.upgradeChoices.includes(choice)) return;
+    const slot=this.activeSkills.findIndex(s=>s.id===oldSkill);
+    if (choice.swap && (slot<0 || this.activeSkills.length!==5 || !this.availableReplacements().some(s=>s.id===choice.id))) return;
+    if (!choice.swap && choice.type==='skill' && choice.isNew && this.activeSkills.length>=5) return;
     sound.play('ui_click');
 
     if (choice.type === 'skill') {
       const existing = this.activeSkills.find(s => s.id === choice.id);
       if (existing) {
         existing.level = choice.level;
+      } else if (choice.swap) {
+        this.removeSkillEffects(this.activeSkills[slot].id);
+        this.activeSkills[slot]={id:choice.id,level:1,cdTimer:0,maxCd:WOOWL_SKILLS[choice.id].cooldown};
       } else {
         this.activeSkills.push({
           id: choice.id,

@@ -42,7 +42,9 @@ async function runSimulation() {
             const score = c => (c.type === 'skill' ? 10 : 6) + (!c.isNew ? 4 : 1);
             return score(b) - score(a);
           });
-          if (ranked[0]) eng.selectUpgrade(ranked[0]);
+          const preferred=ranked.find(c=>!c.swap);
+          if (preferred) eng.selectUpgrade(preferred);
+          else if (ranked.length) eng.keepLoadout();
           else break;
         }
 

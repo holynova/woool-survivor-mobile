@@ -22,7 +22,7 @@ class AudioManager {
   };
 
   // SFX Throttling to prevent audio stuttering on multi-pickups
-  private lastCoinTime = 0;
+  private lastCoinTime = -Infinity;
   private coinStreak = 0;
 
   constructor() {
@@ -94,52 +94,41 @@ class AudioManager {
    * Crisp, satisfying pickup sound for gold coins and exp crystals
    * Throttled with slight musical pitch ascension on combos
    */
-  playCoinPickup(tier = 1) {
+  playCoinPickup(tier = 1, count = 1) {
     if (this.muted) return;
     this.initCtx();
-    if (!this.ctx) return;
-
-    const now = performance.now();
-    if (now - this.lastCoinTime < 42) {
-      // Throttle rapid coin vacuum bursts to prevent acoustic distortion
-      return;
-    }
-    if (now - this.lastCoinTime < 350) {
-      this.coinStreak = Math.min(8, this.coinStreak + 1);
-    } else {
-      this.coinStreak = 0;
-    }
-    this.lastCoinTime = now;
-
-    const buffer = this.buffers.get('coin');
-    const basePitch = 0.94 + (tier - 1) * 0.08 + this.coinStreak * 0.035;
-    const finalVolume = (0.35 + (tier - 1) * 0.06) * this.sfxVolume;
-
-    if (buffer) {
-      const source = this.ctx.createBufferSource();
-      const gain = this.ctx.createGain();
-      source.buffer = buffer;
-      source.playbackRate.value = Math.max(0.7, Math.min(1.6, basePitch));
-      gain.gain.value = Math.min(0.65, finalVolume);
+    const ctx=this.ctx;
+    if (!ctx) return;
+    const now=ctx.currentTime;
+    if(now-this.lastCoinTime<.085) return;
+    this.coinStreak=now-this.lastCoinTime<.42 ? this.coinStreak+1 : 0;
+    this.lastCoinTime=now;
+    const step=[0,2,4,7,9][Math.min(this.coinStreak,4)];
+    const pitch=2**(step/12);
+    const accent=tier>=2 || count>=3 || this.coinStreak%5===4;
+    const buffer=this.buffers.get('coin');
+    const strike=(at:number,rate:number,strength:number)=>{
+      const gain=ctx.createGain();
+      gain.connect(ctx.destination);
+      const duration=buffer ? Math.min(.20,buffer.duration/rate) : .105;
+      if(duration<=0) { gain.disconnect();return; }
+      gain.gain.setValueAtTime(strength*this.sfxVolume*(buffer?1:.18),at);
+      gain.gain.exponentialRampToValueAtTime(.001,at+duration);
+      const source=buffer ? ctx.createBufferSource() : ctx.createOscillator();
+      if ('buffer' in source) {
+        source.buffer=buffer ?? null;
+        source.playbackRate.value=rate;
+      } else {
+        source.type='triangle';
+        source.frequency.value=1120*rate;
+      }
       source.connect(gain);
-      gain.connect(this.ctx.destination);
-      source.start(0);
-    } else {
-      // Retro chime synthesizer fallback
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const t = this.ctx.currentTime;
-      osc.type = 'triangle';
-      const freq = 987 * Math.pow(1.059, this.coinStreak);
-      osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.33, t + 0.08);
-      gain.gain.setValueAtTime(finalVolume * 0.6, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.12);
-    }
+      source.onended=()=>{source.disconnect();gain.disconnect()};
+      source.start(at);
+      source.stop(at+duration);
+    };
+    strike(now,pitch,accent?1.65:1.3);
+    if(accent) strike(now+.045,pitch*1.26,.76);
   }
 
   playPotionPickup() {

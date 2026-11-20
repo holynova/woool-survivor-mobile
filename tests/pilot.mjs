@@ -35,5 +35,6 @@ export function choose(g){
   };
   const options=[...g.upgradeChoices].sort((a,b)=>rating(b)-rating(a));
   if(!options.length)throw Error('Empty upgrade menu');
-  g.selectUpgrade(options[0]);
+  const preferred=options.find(c=>!c.swap);
+  if(preferred)g.selectUpgrade(preferred);else g.keepLoadout();
 }

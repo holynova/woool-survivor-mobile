@@ -3,10 +3,10 @@ import type Phaser from 'phaser';
 import {game} from './game';
 import {Codex} from './Codex';
 import {WOOWL_CHAPTERS as chapters} from './config/chapters';
-import {WOOWL_SKILLS as skills,WOOWL_PASSIVES as passives} from './config/skills';
+import {WOOWL_SKILLS as skills} from './config/skills';
 import {WOOWL_DIFFICULTY_CURVES as curves, WOOWL_MONSTERS as monsters} from './config/curves';
 import {sound} from './audio';
-import { Head, Loadout, Records, TrainingPanel, time, media } from './CampaignPanels';
+import { Head, UpgradePanel, Loadout, Records, TrainingPanel, time, media } from './CampaignPanels';
 import { journalKey, readJournal, writeJournal, finishRun, train, type Journal, type Checkpoint } from './journal';
 import type {HeroClass,DifficultyCurveId} from './types';
 
@@ -159,7 +159,7 @@ export function App(){
         <div className="xp"><span>Lv. {player.level}</span><div><i style={{width:meter(player.exp,player.maxExp)}}/></div><span>{player.kills} 斩</span></div>
       </footer>
       {game.phase!=='battle'&&<div className="veil"><section className="panel" role="dialog">
-        {game.phase==='level_up'?<><small>等级 {player.level}</small><Head title="选择修炼" close={()=>{field.current?.events.emit('clear-drag');game.phase='paused';game.emit()}}/>{game.upgradeChoices.map(c=><button className={c.type==='skill' && c.level===5?'row awakening':'row'} key={c.id} onClick={()=>game.selectUpgrade(c)}><img src={media(c.type==='passive'&&passives[c.id]?.iconType==='item'||c.iconId>100000?'items':'skills',c.iconId)} alt=""/><span><b>{c.title}</b><small>{c.description}</small></span></button>)}</>:
+        {game.phase==='level_up'?<UpgradePanel changed={checkpoint} close={()=>{field.current?.events.emit('clear-drag');game.phase='paused';game.emit()}}/>:
         game.phase==='paused'?sheet==='loadout'?<><Head title="行囊与技能" close={closeSheet}/><Loadout changed={checkpoint}/></>:
         sheet==='retire'?<><Head title="撤离战场" close={closeSheet}/><p>本局将结束，{player.gold} 金收入库银。</p><button className="primary" onClick={retire}>结算并撤离</button></>:
         <><small>{map.name} · {game.wavePhaseName}</small><Head title="战斗暂停" close={resume}/>

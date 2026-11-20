@@ -76,7 +76,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '周身爆发雷光，击退近敌。',
     cooldown: 2.8,
     damage: 65,
-    area: 180,
+    area: 98,
     range: 0,
     soundKey: 'skill_hellthunder',
     maxLevel: 5,
@@ -97,7 +97,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '护盾持续 5.5 秒，并击退周围敌人。',
     cooldown: 6.0,
     damage: 20,
-    area: 120,
+    area: 100,
     range: 0,
     soundKey: 'skill_shield',
     maxLevel: 5,
@@ -118,14 +118,14 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '范围冰爆，减速 2.2 秒。',
     cooldown: 3.2,
     damage: 85,
-    area: 170,
+    area: 98,
     range: 380,
     soundKey: 'skill_iceroar',
     maxLevel: 5,
     upgrades: [
       { level: 1, title: '寒风呼啸', description: '范围冰爆，减速 2.2 秒。' },
       { level: 2, title: '极地玄冰', description: '冰爆半径与伤害提高。' },
-      { level: 3, title: '绝对零度', description: '冰爆半径额外扩大 30%。' },
+      { level: 3, title: '绝对零度', description: '冰爆半径额外扩大 5%。' },
       { level: 4, title: '【九幽冰狱】', description: '减速持续 3.5 秒，额外定身 1.2 秒。' },
       { level: 5, title: '碎冰', description: '对已减速的敌人造成额外 60% 伤害。' }
     ]
@@ -160,7 +160,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '召唤 1 颗陨石轰击怪群。',
     cooldown: 5.5,
     damage: 160,
-    area: 240,
+    area: 102,
     range: 400,
     soundKey: 'skill_hellfire',
     maxLevel: 5,
@@ -192,7 +192,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     upgrades: [
       { level: 1, title: '刚劲初发', description: '朝近敌劈砍，击退前方敌群。' },
       { level: 2, title: '势大力沉', description: '击退距离由 45 增至 65。' },
-      { level: 3, title: '刀光霍霍', description: '劈砍半径由 85 增至 120。' },
+      { level: 3, title: '刀光霍霍', description: '劈砍半径由 85 增至 95。' },
       { level: 4, title: '【破天一击】', description: '每次命中有 35% 概率造成 1.6 倍伤害。' },
       { level: 5, title: '回身斩', description: '攻杀剑术同时斩击身后扇区。' }
     ]
@@ -227,14 +227,14 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '挥出环形刀光，击退身边魔物。',
     cooldown: 1.65,
     damage: 72,
-    area: 145,
+    area: 99,
     range: 0,
     soundKey: 'skill_slash',
     maxLevel: 5,
     upgrades: [
       { level: 1, title: '月华初现', description: '挥出环形刀光，击退身边魔物。' },
       { level: 2, title: '圆月狂澜', description: '击退距离由 52 增至 75。' },
-      { level: 3, title: '刀气破空', description: '刀光半径额外扩大 20%。' },
+      { level: 3, title: '刀气破空', description: '刀光半径额外扩大 4%。' },
       { level: 4, title: '【满月斩魄】', description: '冷却额外缩短 28%，可连续清场。' },
       { level: 5, title: '月缚', description: '弯刀击退敌人后，使其减速 2 秒。' }
     ]
@@ -255,7 +255,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     upgrades: [
       { level: 1, title: '神行突进', description: '向面朝方向突进 165，震晕落点近敌。' },
       { level: 2, title: '势不可挡', description: '突进距离增至 210。' },
-      { level: 3, title: '破军狂踏', description: '落点震击半径增至 160。' },
+      { level: 3, title: '破军狂踏', description: '落点震击半径增至 113。' },
       { level: 4, title: '【战神突斩】', description: '落点伤害额外提高 45%，无敌时间增至 0.7 秒。' },
       { level: 5, title: '战吼', description: '冲撞落点的敌人破甲，后续攻击增伤 35%。' }
     ]
@@ -297,7 +297,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     upgrades: [
       { level: 1, title: '真火燃刃', description: '烈火斩在目标附近爆发。' },
       { level: 2, title: '双烈火劲', description: '命中附带 3 秒灼烧。' },
-      { level: 3, title: '烈焰焚八荒', description: '索敌距离增加 50，爆发半径增至 115。' },
+      { level: 3, title: '烈焰焚八荒', description: '索敌距离增加 50，爆发半径增至 88。' },
       { level: 4, title: '【火神破天】', description: '爆发倍率由 1.45 增至 1.8。' },
       { level: 5, title: '引燃', description: '斩中已灼烧的敌人时额外造成 60% 伤害。' }
     ]
@@ -311,13 +311,13 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '雷剑震击目标周围，麻痹 1.2 秒。',
     cooldown: 4.8,
     damage: 175,
-    area: 180,
+    area: 100,
     range: 240,
     soundKey: 'skill_lightning',
     maxLevel: 5,
     upgrades: [
       { level: 1, title: '雷霆初动', description: '雷剑震击目标周围，麻痹 1.2 秒。' },
-      { level: 2, title: '金雷破空', description: '震击半径扩大 40%。' },
+      { level: 2, title: '金雷破空', description: '震击半径额外扩大 4%。' },
       { level: 3, title: '雷龙震天', description: '雷击伤害提高，冷却缩短。' },
       { level: 4, title: '【万剑归宗】', description: '雷击伤害再次提高，出剑更快。' },
       { level: 5, title: '雷锁', description: '定身结束后，目标仍受减速影响。' }
@@ -378,7 +378,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '中毒 4 秒，易伤 20%。',
     cooldown: 3.2,
     damage: 32,
-    area: 140,
+    area: 94,
     range: 350,
     soundKey: 'skill_poison',
     maxLevel: 5,
@@ -483,7 +483,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     desc: '吼退周围敌人，定身 1.4 秒。',
     cooldown: 8.5,
     damage: 95,
-    area: 250,
+    area: 84,
     range: 0,
     soundKey: 'skill_repel',
     maxLevel: 5,
@@ -530,9 +530,9 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '深渊魔晶珠',
     iconId: 2020210,
     iconType: 'item',
-    desc: '每级技能范围 +20%。',
+    desc: '每级技能范围 +3%。',
     maxLevel: 4,
-    effect: { areaMod: 0.2 }
+    effect: { areaMod: 0.03 }
   },
   taichi_pill: {
     id: 'taichi_pill',

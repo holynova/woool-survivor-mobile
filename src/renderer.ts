@@ -375,7 +375,7 @@ export class BattleScene extends Phaser.Scene {
       this.playerShieldSprite.setVisible(true);
       const shield = game.heroClass === 'wizard' ? 'fx_wind_shield_cast_anim' : 'fx_diamond_body_buff_anim';
       if (this.anims.exists(shield) && !this.playerShieldSprite.anims.isPlaying) {
-        this.playerShieldSprite.play(shield);
+        this.playerShieldSprite.setScale(this.effectScale(shield,1)).play(shield);
       }
     } else {
       this.playerShieldSprite.setVisible(false);
@@ -580,6 +580,20 @@ export class BattleScene extends Phaser.Scene {
     if (this.playerShieldSprite) this.playerShieldSprite.setVisible(false);
   }
 
+  private effectBounds = new Map<string,{width:number;height:number}>();
+
+  private effectScale(animation:string, scale:number) {
+    let bounds=this.effectBounds.get(animation);
+    if (!bounds) {
+      const frames=this.anims.get(animation)?.frames;
+      if (!frames?.length) return scale;
+      bounds={width:Math.max(1,...frames.map(f=>f.frame.cutWidth)),height:Math.max(1,...frames.map(f=>f.frame.cutHeight))};
+      this.effectBounds.set(animation,bounds);
+    }
+    const camera=this.cameras.main;
+    return Math.min(scale,camera.width*.40/(camera.zoom*bounds.width),camera.height*.37/(camera.zoom*bounds.height));
+  }
+
   private spawnSkillEffect(
     x: number,
     y: number,
@@ -594,7 +608,7 @@ export class BattleScene extends Phaser.Scene {
     const fx = this.trackSprite(this.add.sprite(x, y, texture));
     fx.setOrigin(0.5, 0.5);
     fx.setDepth(depth);
-    fx.setScale(scale);
+    fx.setScale(this.effectScale(animKey,scale));
     fx.setFlipX(flipX);
     fx.setBlendMode(blendMode);
     fx.play(animKey);
@@ -618,7 +632,7 @@ export class BattleScene extends Phaser.Scene {
       const [texture,animation,,scale]=this.flightArt[shot.kind];
       let sprite=this.missiles.get(shot.id);
       if(!sprite){
-        sprite=this.add.sprite(shot.x,shot.y,texture).setDepth(2000).setScale(scale*(1+.1*(shot.level-1)));
+        sprite=this.add.sprite(shot.x,shot.y,texture).setDepth(2000).setScale(this.effectScale(animation,scale*(1+.025*(shot.level-1))));
         sprite.play(animation);this.missiles.set(shot.id,sprite);
       }
       sprite.setPosition(shot.x,shot.y-12).setRotation(Math.atan2(shot.targetY-shot.y,shot.targetX-shot.x));
@@ -631,7 +645,7 @@ export class BattleScene extends Phaser.Scene {
     const currentFrame = this.playerSprite.frame?.name;
     const { dirDigit, flipX } = getDirInfo(dir);
 
-    const scaleMult = level >= 4 ? 2.1 : (level >= 2 ? 1.5 : 1.25);
+    const scaleMult = 1+.03*(level-1);
 
     if (currentFrame) {
       for (const t of [0.22, 0.52, 0.8]) {
@@ -658,7 +672,7 @@ export class BattleScene extends Phaser.Scene {
 
     const streak = this.trackSprite(this.add.sprite(startX, startY, 'fx_1010'));
     streak.setOrigin(0.5, 0.5);
-    streak.setScale(scaleMult);
+    streak.setScale(this.effectScale(animKey,scaleMult));
     streak.setFlipX(flipX);
     streak.setDepth(Math.max(startY, targetY) + 25);
     streak.play(animKey);
@@ -708,7 +722,7 @@ export class BattleScene extends Phaser.Scene {
 
     for (const e of newEffects) {
       const lvl = e.level || 1;
-      const levelMult = lvl >= 4 ? 2.15 : (lvl === 3 ? 1.65 : (lvl === 2 ? 1.3 : 1.0));
+      const levelMult = 1+.03*(lvl-1);
 
       if (e.type === 'lion_roar' && e.radius) {
         if (!this.textures.exists('roar_wave')) {
@@ -717,7 +731,7 @@ export class BattleScene extends Phaser.Scene {
             const ctx = wave.context;
             const glow = ctx.createRadialGradient(64, 64, 48, 64, 64, 63);
             glow.addColorStop(0, 'transparent');
-            glow.addColorStop(.8, 'rgba(205,255,176,.7)');
+            glow.addColorStop(.8, 'rgba(205,255,176,.34)');
             glow.addColorStop(1, 'transparent');
             ctx.fillStyle = glow;
             ctx.fillRect(0, 0, 128, 128);
@@ -725,7 +739,7 @@ export class BattleScene extends Phaser.Scene {
           }
         }
         const ring = this.trackSprite(this.add.sprite(e.x,e.y,'roar_wave').setDepth(e.y + 10).setScale(.25));
-        this.trackTween({targets:ring, scale:e.radius / 63, alpha:0, duration:400, onComplete:()=>ring.destroy()});
+        this.trackTween({targets:ring, scale:Math.min(e.radius/63,this.cameras.main.width*.40/(128*this.cameras.main.zoom)), alpha:0, duration:400, onComplete:()=>ring.destroy()});
       }
 
       if (e.type === 'hellfire' && e.targetX !== undefined && e.targetY !== undefined) {
@@ -741,7 +755,7 @@ export class BattleScene extends Phaser.Scene {
       if(e.type in this.flightArt) {
         const [texture,,impact,scale]=this.flightArt[e.type as FlightKind];
         if(e.impact) {
-          this.spawnSkillEffect(e.x,e.y-12,texture,impact,2000,scale*(1+.15*(lvl-1)));
+          this.spawnSkillEffect(e.x,e.y-12,texture,impact,2000,scale*levelMult);
           if(e.type==='meteor')this.spawnSkillEffect(e.x,e.y-16,'fx_2011','fx_meteor_cast_anim',2001,.85);
         } else if(e.type==='talisman' && !castPlayedThisTick.has('talisman')) {
           castPlayedThisTick.add('talisman');
@@ -805,9 +819,9 @@ export class BattleScene extends Phaser.Scene {
       const sy = cfg.followPlayer ? this.playerSprite.y : e.y;
       let scale = (cfg.scale || 1.0) * levelMult;
       if (e.radius && e.type === 'hell_thunder') {
-        scale = Math.max(0.85, (e.radius / 165) * levelMult);
+        scale = Math.max(0.85, e.radius / 110);
       } else if (e.radius && e.type === 'poison') {
-        scale = Math.max(0.92, (e.radius / 115) * levelMult);
+        scale = Math.max(0.92, e.radius / 100);
       }
 
       this.spawnSkillEffect(

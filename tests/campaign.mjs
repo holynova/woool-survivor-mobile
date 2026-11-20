@@ -150,6 +150,53 @@ try {
     assert.equal(g.getActiveBoss().spriteKey,chapter.bossSpriteKey);
     assert.equal(g.monsters.filter(m=>m.isBoss).length,1,id+' '+difficulty);
   }
+  // Draft budget and offers belong to the run, including old and paused checkpoints.
+  {
+    const g=new GameEngine();g.start('wizard','sunset_island','standard');
+    const loadout=['fireball','lightning_strike','hellfire','hell_thunder','wind_shield'];
+    g.activeSkills=loadout.map(id=>({id,level:2,cdTimer:0}));
+    g.clock=220;g.player.level=11;g.triggerLevelUp();
+    assert.ok(g.upgradeChoices.every(c=>!c.swap));
+    g.player.level=12;g.triggerLevelUp();
+    for(let remaining=3;remaining>0;remaining--){
+      const oldIds=g.upgradeChoices.map(c=>c.id);
+      assert.equal(g.upgradeChoices.length,3);
+      assert.equal(g.upgradeChoices.filter(c=>c.swap).length,1);
+      assert.equal(g.rerollChoices(),true);
+      assert.equal(g.rerolls,remaining-1);
+      assert.ok(g.upgradeChoices.every(c=>!oldIds.includes(c.id)));
+    }
+    const saved=g.snapshot();
+    assert.equal(g.rerollChoices(),false);
+    const restored=new GameEngine();restored.restore(saved);
+    assert.equal(restored.rerolls,0);
+    const offer=restored.upgradeChoices.find(c=>c.swap);
+    assert.ok(['mythic','legendary'].includes(skills[offer.id].quality));
+    restored.selectUpgrade(offer);restored.selectUpgrade(offer,'fake');
+    assert.deepEqual(restored.activeSkills.map(s=>s.id),loadout);
+    restored.player.shieldUntil=400;restored.selectUpgrade(offer,'wind_shield');
+    assert.equal(restored.activeSkills.length,5);assert.equal(restored.activeSkills[4].id,offer.id);
+    assert.equal(restored.activeSkills[4].level,1);assert.equal(restored.player.shieldUntil,0);
+    assert.equal(restored.player.gold,0);assert.equal(restored.phase,'battle');
+    const legacy=structuredClone(saved);delete legacy.rerolls;
+    legacy.activePassives=[{id:'abyss_orb',level:4}];legacy.player.areaBonus=.8;
+    restored.restore(legacy);assert.equal(restored.rerolls,3);assert.equal(restored.player.areaBonus,.12);
+    restored.upgradeChoices=[offer];restored.keepLoadout();
+    assert.equal(restored.phase,'battle');assert.equal(restored.player.gold,60);
+    restored.keepLoadout();assert.equal(restored.player.gold,60);
+    restored.start('wizard','sunset_island','standard');assert.equal(restored.rerolls,3);
+  }
+  // At max orb and skill ranks, an enemy outside the new ice radius is unharmed.
+  {
+    const g=new GameEngine();g.start('wizard','sunset_island','standard');
+    g.activePassives=[{id:'abyss_orb',level:4}];g.applyPassiveEffects();
+    const [center,inside,outside]=g.monsters;
+    for(const [i,m] of [center,inside,outside].entries())Object.assign(m,{x:g.player.x+[30,150,180][i],y:g.player.y,hp:9000,maxHp:9000});
+    assert.ok(g.triggerSkill('ice_roar',5,skills.ice_roar));
+    const effect=g.takeEffects().find(e=>e.type==='ice_roar');
+    assert.ok(effect.radius>120 && effect.radius<130);
+    assert.ok(inside.hp<9000);assert.equal(outside.hp,9000);
+  }
   // Pickups, spending and a pending upgrade must survive a reload without duplicating rewards.
   const trial=new GameEngine();trial.start('wizard','sunset_island','standard');
   trial.monsters=[];

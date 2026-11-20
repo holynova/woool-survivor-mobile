@@ -17,7 +17,7 @@ export function Records({journal}:{journal:Journal}) {
     {!journal.recent.length && <p>暂无战绩</p>}
     {journal.recent.map(r=><div className="entry" key={r.id}><b>{chapters[r.chapter]?.name.split(' · ')[0]} · {{victory:'通关',game_over:'阵亡',retired:'撤离'}[r.outcome]}</b>
       <small>{jobs[r.role]} · {curves[r.difficulty]?.name} · {time(r.seconds)} · {r.kills} 斩 · 入库 {r.coins}</small></div>)}
-    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.6</a></p></>;
+    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.7</a></p></>;
 }
 export function TrainingPanel({journal,buy}:{journal:Journal;buy:(id:keyof Training)=>void}) {
   return <><p>库银 {journal.bank} · 下局生效</p>
@@ -27,6 +27,28 @@ export function TrainingPanel({journal,buy}:{journal:Journal;buy:(id:keyof Train
         <button disabled={rank>=5||journal.bank<cost} onClick={()=>buy(id)}>{rank>=5?'已圆满':cost+' 金'}</button></div>;
     })}</>;
 }
+export function UpgradePanel({changed,close}:{changed:()=>void;close:()=>void}) {
+  const [swapId,setSwapId]=useState<string|null>(null);
+  const [noAlternatives,setNoAlternatives]=useState(false);
+  const swap=game.upgradeChoices.find(choice=>choice.id===swapId && choice.swap);
+  if (swap) return <><Head title={'换入'+skills[swap.id].name} close={()=>setSwapId(null)}/>
+    <p>选择要换下的技能。新技能从 1 级开始。</p>
+    {game.activeSkills.map(old=><button key={old.id} className="row" onClick={()=>game.selectUpgrade(swap,old.id)}>
+      <img src={media('skills',skills[old.id].iconId)} alt=""/><span><b>{skills[old.id].name}</b><small>{old.level} 级 · 换下</small></span>
+    </button>)}
+    <button className="resume" onClick={()=>setSwapId(null)}>返回三选一</button></>;
+  return <><small>等级 {game.player.level}</small><Head title="选择修炼" close={close}/>
+    {game.upgradeChoices.map(c=><button className={c.swap || c.type==='skill' && c.level===5?'row awakening':'row'} key={c.id}
+      onClick={()=>c.swap?setSwapId(c.id):game.selectUpgrade(c)}>
+      <img src={media(c.type==='passive' && passives[c.id]?.iconType==='item' || c.iconId>100000?'items':'skills',c.iconId)} alt=""/>
+      <span><b>{c.swap?skills[c.id].name+' · 可替换':c.title}</b><small>{c.description}</small></span></button>)}
+    <div className="draft-actions">
+      <button disabled={!game.rerolls || noAlternatives} onClick={()=>{if(game.rerollChoices())changed();else setNoAlternatives(true)}}>
+        {noAlternatives?'已看过全部选项':'刷新 · 剩 '+game.rerolls+' 次'}</button>
+      {game.upgradeChoices.every(c=>c.swap) && <button onClick={()=>game.keepLoadout()}>保留技能 · 取 60 金</button>}
+    </div></>;
+}
+
 export function Loadout({changed}:{changed:()=>void}) {
   const [selected,select]=useState<string|null>(null);
   const change=(replacement?:string)=>{
