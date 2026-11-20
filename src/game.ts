@@ -27,15 +27,8 @@ import { sound } from './audio';
 export const WORLD_WIDTH = 2560;
 export const WORLD_HEIGHT = 1440;
 
-export function getQualityBadge(quality: SkillQuality = 'common'): string {
-  switch (quality) {
-    case 'common': return '凡品';
-    case 'rare': return '灵品';
-    case 'epic': return '极品';
-    case 'mythic': return '绝世';
-    case 'legendary': return '神武';
-    default: return '凡品';
-  }
+function choiceTitle(name: string, level: number, isNew: boolean) {
+  return isNew ? name + ' · 新' : name + ' · ' + level + '级';
 }
 
 export function getQualityColor(quality: SkillQuality = 'common'): string {
@@ -273,6 +266,23 @@ export class GameEngine {
   restore(saved: ReturnType<GameEngine['snapshot']>) {
     const { milestones, ...state } = structuredClone(saved);
     Object.assign(this, state);
+    const guardLimit = this.activeSkills.some(s => s.id === 'summon_skeleton' && s.level >= 3) ? 2 : 1;
+    let guards = 0;
+    for (const m of this.minions) {
+      if (m.type !== 'skeleton' || m.name !== '强化骷髅') continue;
+      if (++guards > guardLimit && this.activeSkills.some(s => s.id === 'enhanced_skeleton')) m.type = 'enhanced_skeleton';
+      else m.name = '骷髅';
+    }
+    // Older saves kept the display text and icon alongside each pending choice.
+    for (const choice of this.upgradeChoices) {
+      const def = choice.type === 'skill' ? WOOWL_SKILLS[choice.id] : WOOWL_PASSIVES[choice.id];
+      if (!def) continue;
+      choice.title = choiceTitle(def.name, choice.level, choice.isNew);
+      choice.iconId = def.iconId;
+      choice.description = choice.type === 'skill'
+        ? WOOWL_SKILLS[choice.id].upgrades.find(u => u.level === choice.level)?.description ?? def.desc
+        : def.desc;
+    }
     this.spawnedMilestones = new Set(milestones);
     this.phase = state.phase === 'level_up' ? 'level_up' : 'paused';
     this.effects = [];
@@ -300,7 +310,8 @@ export class GameEngine {
     } else this.activeSkills.splice(index, 1);
 
     if (id === 'shinsu_summon') this.minions = this.minions.filter(m => m.type !== 'shinsu');
-    if (id === 'summon_skeleton' || id === 'enhanced_skeleton') {
+    if (id === 'enhanced_skeleton') this.minions = this.minions.filter(m => m.type !== 'enhanced_skeleton');
+    if (id === 'summon_skeleton') {
       this.minions = this.minions.filter(m => m.type !== 'skeleton');
       if (this.heroClass === 'taoist') this.spawnMinion('skeleton');
     }
@@ -491,9 +502,9 @@ export class GameEngine {
 
     if (id === 'enhanced_skeleton') {
       const desiredCount = level >= 4 ? 3 : level >= 2 ? 2 : 1;
-      const currentSkeletons = this.minions.filter(m => m.type === 'skeleton');
+      const currentSkeletons = this.minions.filter(m => m.type === 'enhanced_skeleton');
       if (currentSkeletons.length < desiredCount) {
-        this.spawnMinion('skeleton', level);
+        this.spawnMinion('enhanced_skeleton', level);
         sound.play(def.soundKey);
       }
       for (const m of currentSkeletons) {
@@ -529,7 +540,7 @@ export class GameEngine {
         }
         this.effects.push({
           id: this.nextEntityId++,
-          type: 'talisman',
+          type: 'ghost_fire_curse',
           x: this.player.x,
           y: this.player.y,
           targetX: t.x,
@@ -839,14 +850,15 @@ export class GameEngine {
       const ndy = hdy / hDist;
       const fireLen = def.range + (level >= 2 ? 80 : 0);
       const fireWidth = 65;
-      const fireDir = calcDirection(hdx, hdy);
+
 
       this.effects.push({
         id: this.nextEntityId++,
         type: 'hellfire',
-        x: this.player.x + ndx * (fireLen * 0.4),
-        y: this.player.y + ndy * (fireLen * 0.4),
-        dir: fireDir,
+        x: this.player.x,
+        y: this.player.y,
+        targetX: this.player.x + ndx * fireLen,
+        targetY: this.player.y + ndy * fireLen,
         level
       });
 
@@ -989,13 +1001,6 @@ export class GameEngine {
       if (currentSkeletons.length < desiredCount) {
         this.spawnMinion('skeleton', level);
         sound.play(def.soundKey);
-        this.effects.push({
-          id: this.nextEntityId++,
-          type: 'summon_skeleton',
-          x: this.player.x + 30,
-          y: this.player.y,
-          level
-        });
       }
       for (const m of currentSkeletons) {
         m.damage = Math.round(36 * (1 + (level - 1) * 0.35));
@@ -1082,15 +1087,16 @@ export class GameEngine {
               this.damageEnemy(adj, Math.round(m.damage * 0.7), false);
             }
           }
-          sound.play(m.type === 'skeleton' ? 'skill_slash' : 'skill_fireball');
+          sound.play(m.type !== 'shinsu' ? 'skill_slash' : 'skill_fireball');
           this.effects.push({
             id: this.nextEntityId++,
-            type: m.type === 'skeleton' ? 'skeleton_hit' : 'shinsu_hit',
-            x: target.x,
-            y: target.y,
+            type: m.type !== 'shinsu' ? 'skeleton_hit' : 'shinsu_hit',
+            x: m.type === 'shinsu' ? m.x : target.x,
+            y: m.type === 'shinsu' ? m.y : target.y,
+            targetX: target.x, targetY: target.y,
             dir: m.dir
           });
-          m.attackCd = m.type === 'skeleton' ? 0.58 : 0.9;
+          m.attackCd = m.type !== 'shinsu' ? 0.58 : 0.9;
         }
       } else {
         const dx = this.player.x - m.x;
@@ -1105,25 +1111,26 @@ export class GameEngine {
     }
   }
 
-  private spawnMinion(type: 'skeleton' | 'shinsu', level = 1) {
+  private spawnMinion(type: MinionEntity['type'], level = 1) {
     const minion: MinionEntity = {
       id: this.nextEntityId++,
       type,
-      name: type === 'skeleton' ? '强化骷髅' : '神兽圣犬',
+      name: {skeleton: '骷髅', enhanced_skeleton: '强化骷髅', shinsu: '神兽'}[type],
       x: this.player.x + (Math.random() - 0.5) * 65,
       y: this.player.y + (Math.random() - 0.5) * 65,
       dir: 4,
-      hp: type === 'skeleton' ? 280 : 580,
-      maxHp: type === 'skeleton' ? 280 : 580,
-      damage: Math.round((type === 'skeleton' ? 35 : 58) * (1 + (level - 1) * 0.35)),
-      speed: type === 'skeleton' ? 245 : 210,
+      hp: type !== 'shinsu' ? 280 : 580,
+      maxHp: type !== 'shinsu' ? 280 : 580,
+      damage: Math.round((type !== 'shinsu' ? 35 : 58) * (1 + (level - 1) * 0.35)),
+      speed: type !== 'shinsu' ? 245 : 210,
       targetEnemyId: null,
       attackCd: 0.45
     };
     this.minions.push(minion);
     this.effects.push({
       id: this.nextEntityId++,
-      type,
+      type: type === 'skeleton' ? 'summon_skeleton' : type,
+      level,
       x: minion.x,
       y: minion.y
     });
@@ -1341,8 +1348,8 @@ export class GameEngine {
       this.addDamageNumber(x, y - 20, `【精英 ${arch.name} 来袭】`, '#c084fc', true);
       this.alertBanner = {
         type: 'elite',
-        title: '【精英妖魔突袭】',
-        subtitle: `【精英】${arch.name} 破阵狂袭！速速迎敌！`,
+        title: '精英来袭',
+        subtitle: `${arch.name}`,
         duration: 3.5,
         maxDuration: 3.5,
         x,
@@ -1411,8 +1418,8 @@ export class GameEngine {
     this.addDamageNumber(x, y - 25, `【领主降临】${name}`, '#ff4400', true);
     this.alertBanner = {
       type: 'elite',
-      title: '【霸主魔物现世】',
-      subtitle: `${name} 携万钧煞气降临中州！`,
+      title: '领主来袭',
+      subtitle: `${name}`,
       duration: 5.0,
       maxDuration: 5.0,
       x,
@@ -1454,8 +1461,8 @@ export class GameEngine {
 
     this.alertBanner = {
       type: 'boss',
-      title: '【终局魔尊现世】',
-      subtitle: `镇守魔主【${chap.bossName}】携毁天灭地魔威降临！决战中州！`,
+      title: '首领现身',
+      subtitle: `${chap.bossName}`,
       duration: 6.5,
       maxDuration: 6.5,
       x,
@@ -1674,7 +1681,7 @@ export class GameEngine {
       }
 
       sound.play('skill_holyword');
-      this.addDamageNumber(this.player.x, this.player.y, '境界突破!', '#ffe066', true);
+      this.addDamageNumber(this.player.x, this.player.y, '升级', '#ffe066', true);
       this.effects.push({
         id: this.nextEntityId++,
         type: 'level_up',
@@ -1724,8 +1731,8 @@ export class GameEngine {
             id: act.id,
             isNew: false,
             level: act.level + 1,
-            title: `【${getQualityBadge(def.quality)}】${def.name} Lv.${act.level + 1}`,
-            description: nextUpgrade ? `${nextUpgrade.title}：${nextUpgrade.description}` : def.desc,
+            title: choiceTitle(def.name, act.level + 1, false),
+            description: nextUpgrade?.description ?? def.desc,
             iconId: def.iconId,
             quality: def.quality
           },
@@ -1747,7 +1754,7 @@ export class GameEngine {
               id: s.id,
               isNew: true,
               level: 1,
-              title: `【${getQualityBadge(s.quality)}】习得：${s.name}`,
+              title: choiceTitle(s.name, 1, true),
               description: s.desc,
               iconId: s.iconId,
               quality: s.quality
@@ -1770,7 +1777,7 @@ export class GameEngine {
             id: p.id,
             isNew: curLevel === 0,
             level: curLevel + 1,
-            title: `宝物: 【${p.name}】Lv.${curLevel + 1}`,
+            title: choiceTitle(p.name, curLevel + 1, !existing),
             description: p.desc,
             iconId: p.iconId
           },

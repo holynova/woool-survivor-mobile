@@ -12,13 +12,37 @@ try {
   const memory=new Map();
   globalThis.localStorage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)};
   const setSeed=n=>{let state=n;Math.random=()=>((state=(Math.imul(1664525,state)+1013904223)>>>0)/4294967296)};
+  // Reviewed against the shipped PNG strips, including spells with similar names.
+  const visuals = {
+    fireball:[2001,'fireball'], lightning_strike:[2002,'lightning_strike'], hellfire:[2007,'hellfire'],
+    hell_thunder:[2003,'hell_thunder'], wind_shield:[2009,'wind_shield'], ice_roar:[2008,'ice_roar'],
+    dragon_purple_lightning:[2010,'lightning'], celestial_meteor:[2011,'meteor'],
+    attack_slash:[1002,'attack_slash'], assassination_sword:[1003,'assassination_sword'],
+    moon_blade:[1004,'blade_arc'], assault_dash:[1010,'dash'], diamond_body:[1008,'diamond_body'],
+    fire_sword:[1006,'fire_slash'], thunder_sword:[1102,'thunder_sword'],
+    soul_talisman:[3002,'talisman'], heal_spell:[3001,'heal_spell'], poison_cloud:[3004,'poison'],
+    summon_skeleton:[3008,'summon_skeleton'], ghost_fire_curse:[3011,'ghost_fire_curse'],
+    shinsu_summon:[3007,'shinsu'], enhanced_skeleton:[3012,'enhanced_skeleton'], lion_roar:[3303,'lion_roar']
+  };
+  assert.deepEqual(Object.keys(skills).sort(), Object.keys(visuals).sort());
   setSeed(123);
   for(const def of Object.values(skills))for(let level=1;level<=def.maxLevel;level++){
     const g=new GameEngine();g.start(def.classType,'sunset_island','standard');
     for(const m of g.monsters){m.x=g.player.x+35;m.y=g.player.y;m.hp=m.maxHp=100000;}
     g.player.hp-=30;g.minions=[];g.takeEffects();
     assert.equal(g.triggerSkill(def.id,level,def),true,def.id+' level '+level);
-    assert.ok(g.takeEffects().length || g.minions.length,def.id+' missing feedback');
+    const [icon, event] = visuals[def.id];
+    assert.equal(def.iconId, icon, def.id+' icon');
+    const effects = g.takeEffects();
+    assert.ok(effects.length > 0 && effects.every(e => e.type === event), def.id+' wrong cast event');
+    if (def.id === 'hellfire') assert.equal(Math.round(effects[0].targetX - effects[0].x), level >= 2 ? 340 : 260);
+    if (def.id === 'lightning_strike') assert.equal(effects[0].x, g.monsters[0].x);
+    if (def.id === 'shinsu_summon') {
+      const m=g.minions[0]; m.x=g.monsters[0].x-20; m.y=g.monsters[0].y; m.attackCd=0;
+      g.updateMinions(.01);
+      const breath=g.takeEffects().find(e=>e.type==='shinsu_hit');
+      assert.ok(breath && breath.x===m.x && breath.targetX===g.monsters[0].x);
+    }
   }
   // Pickups, spending and a pending upgrade must survive a reload without duplicating rewards.
   const trial=new GameEngine();trial.start('wizard','sunset_island','standard');

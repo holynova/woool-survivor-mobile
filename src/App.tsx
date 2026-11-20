@@ -116,7 +116,7 @@ export function App(){
   const leaveSaved=()=>{checkpoint();lobby()};
   const retire=()=>{persist(finishRun(journalRef.current,game,'retired'));lobby()};
   return <main>
-    {storageError&&<div role="status" className="storage-error">浏览器未能保存进度，请保留此页面。</div>}
+    {storageError&&<div role="status" className="storage-error">存档失败，请保留此页。</div>}
     {inLobby&&<section className="home" style={{backgroundImage:'linear-gradient(180deg,#12141316 12%,#11150fe6 61%,#0f120fff 91%),url('+map.bgImage+')'}}>
       <header className="mast"><span>传 世</span><nav><button disabled={progress!==null} onClick={()=>setSheet('records')}>战绩</button><button disabled={progress!==null} onClick={()=>setSheet('training')}>修行</button><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></nav></header>
       <div className="home-body">
@@ -137,10 +137,10 @@ export function App(){
     {(sheet==='records'||sheet==='training'||sheet==='new')&&<div className="veil"><section className="panel" role="dialog">
       <Head title={{records:'出征战绩',training:'传世修行',new:'另启征程'}[sheet]} close={closeSheet}/>
       {sheet==='records'?<Records journal={journal}/>:sheet==='training'?<TrainingPanel journal={journal} buy={id=>persist(train(journalRef.current,id))}/>:
-        <><p>开始新局会结束上次出征，上局金币将收入库银。</p><button className="primary" onClick={()=>{
+        <><p>结束上局并存入金币？</p><button className="primary" onClick={()=>{
           if(journal.saved){game.restore(journal.saved);persist(finishRun(journalRef.current,game,'retired'))}
           void start();
-        }}>结算上局并出战</button></>}
+        }}>结算并出战</button></>}
     </section></div>}
     {!inLobby&&<>
       <div className="top"><span>{time(game.clock)}</span><button aria-label="暂停" onClick={()=>{field.current?.events.emit('clear-drag');pause()}}>Ⅱ</button></div>

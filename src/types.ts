@@ -114,7 +114,7 @@ export interface MonsterEntity {
 
 export interface MinionEntity {
   id: number;
-  type: 'skeleton' | 'shinsu';
+  type: 'skeleton' | 'enhanced_skeleton' | 'shinsu';
   name: string;
   x: number;
   y: number;
@@ -164,7 +164,7 @@ export interface EffectEvent {
     | 'wind_shield'
     | 'shinsu'
     | 'shinsu_hit'
-    | 'skeleton'
+    | 'enhanced_skeleton'
     | 'skeleton_hit'
     | 'ice_roar'
     | 'fireball'

@@ -97,13 +97,14 @@ export class BattleScene extends Phaser.Scene {
     monsters.add(WOOWL_MONSTERS.scarecrow.spriteKey);
     monsters.add(WOOWL_MONSTERS.deer.spriteKey);
     monsters.add(chapter.bossSpriteKey);
+    if(game.heroClass==='taoist') monsters.add('20081');
     monsters.add('20082');
     monsters.add('20085');
     for (const id of monsters) atlas('m_'+id,'assets/woool/monsters/m_'+id);
     atlas('level_up','assets/woool/effects/level_up');
     const effects=new Set(Object.values(WOOWL_SKILLS).filter(s=>s.classType===game.heroClass).map(s=>s.iconId));
     if(game.heroClass==='warrior') this.load.atlas('fx_1102_more',assetUrl('assets/woool/skills_fx/s_1102@1.png'),assetUrl('assets/woool/skills_fx/s_1102@1.json'));
-    if(game.heroClass==='wizard') effects.add(2011);
+    if(game.heroClass==='wizard') effects.add(2202);
     if(game.heroClass==='taoist'){ effects.add(2001); effects.add(1004); } // Summon fire and axe impacts.
     for(const id of effects) atlas('fx_'+id,'assets/woool/skills_fx/s_'+id);
   }
@@ -457,7 +458,7 @@ export class BattleScene extends Phaser.Scene {
       sprite.setPosition(minion.x, minion.y);
       sprite.setDepth(minion.y);
 
-      const atlasKey = minion.type === 'skeleton' ? 'm_20082' : 'm_20085';
+      const atlasKey = {skeleton: 'm_20081', enhanced_skeleton: 'm_20082', shinsu: 'm_20085'}[minion.type];
       const { dirDigit, flipX } = getDirInfo(minion.dir || 4);
       sprite.setFlipX(flipX);
 
@@ -582,21 +583,24 @@ export class BattleScene extends Phaser.Scene {
     fx.on('animationcomplete', () => fx.destroy());
   }
 
-  private spawnTalismanProjectile(startX: number, startY: number, targetX: number, targetY: number, level = 1) {
+  private spawnTalismanProjectile(startX: number, startY: number, targetX: number, targetY: number, level: number, curse: boolean) {
+    const texture = curse ? 'fx_3011' : 'fx_3002';
+    const flight = curse ? 'fx_curse_fly_anim' : 'fx_talisman_fly_anim';
+    const hit = curse ? 'fx_curse_hit_anim' : 'fx_talisman_hit_anim';
     const sy = startY - 18;
     const ty = targetY - 14;
     const dist = Math.hypot(targetX - startX, ty - sy);
 
     const scaleMult = level === 4 ? 1.6 : (level >= 2 ? 1.25 : 0.95);
 
-    if (this.anims.exists('fx_talisman_fly_anim') && dist > 28) {
-      const proj = this.trackSprite(this.add.sprite(startX, sy, 'fx_3011'));
+    if (this.anims.exists(flight) && dist > 28) {
+      const proj = this.trackSprite(this.add.sprite(startX, sy, texture));
       proj.setOrigin(0.5, 0.5);
       proj.setScale(scaleMult);
       proj.setDepth(Math.max(startY, targetY) + 40);
       proj.setRotation(Math.atan2(ty - sy, targetX - startX));
       proj.setBlendMode(Phaser.BlendModes.NORMAL);
-      proj.play('fx_talisman_fly_anim');
+      proj.play(flight);
 
       const duration = Math.max(220, Math.min(400, Math.round(dist * 1.1)));
       this.trackTween({
@@ -607,11 +611,11 @@ export class BattleScene extends Phaser.Scene {
         ease: 'Linear',
         onComplete: () => {
           proj.destroy();
-          this.spawnSkillEffect(targetX, targetY + 4, 'fx_3011', 'fx_talisman_hit_anim', targetY + 25, scaleMult * 1.05);
+          this.spawnSkillEffect(targetX, targetY + 4, texture, hit, targetY + 25, scaleMult * 1.05);
         }
       });
     } else {
-      this.spawnSkillEffect(targetX, targetY + 4, 'fx_3011', 'fx_talisman_hit_anim', targetY + 25, scaleMult * 1.05);
+      this.spawnSkillEffect(targetX, targetY + 4, texture, hit, targetY + 25, scaleMult * 1.05);
     }
   }
 
@@ -630,6 +634,7 @@ export class BattleScene extends Phaser.Scene {
         const drop = this.trackSprite(this.add.sprite(x, startY, 'fx_2202'));
         drop.setOrigin(0.5, 0.5);
         drop.setScale(scaleMult);
+        drop.setRotation(Math.PI / 2);
         drop.setDepth(y + 30);
         drop.setBlendMode(Phaser.BlendModes.NORMAL);
         drop.play('fx_meteor_drop_anim');
@@ -719,17 +724,13 @@ export class BattleScene extends Phaser.Scene {
       hell_thunder: { tex: 'fx_2003', anim: 'fx_hell_thunder_anim', dy: -6, dDepth: 15, scale: 1.0, followPlayer: true },
       poison: { tex: 'fx_3004', anim: 'fx_poison_anim', dy: -14, dDepth: 18, scale: 1.05 },
       diamond_body: { tex: 'fx_1008', anim: 'fx_diamond_body_cast_anim', dy: -6, dDepth: 12, scale: 1.25, followPlayer: true },
-      wind_shield: { tex: 'fx_2009', anim: 'fx_wind_shield_cast_anim', dy: -6, dDepth: 12, scale: 1.25, followPlayer: true },
       shinsu: { tex: 'fx_3007', anim: 'fx_shinsu_anim', dy: 6, dDepth: 20, scale: 1.15 },
-      shinsu_hit: { tex: 'fx_2001', anim: 'fx_shinsu_hit_anim', dy: -10, dDepth: 25, scale: 0.78 },
-      skeleton: { tex: 'fx_3012', anim: 'fx_skeleton_anim', dy: 10, dDepth: 20, scale: 0.88 },
+      enhanced_skeleton: { tex: 'fx_3012', anim: 'fx_skeleton_anim', dy: 10, dDepth: 20, scale: 0.88 },
       ice_roar: { tex: 'fx_2008', anim: 'fx_ice_roar_anim', dy: 0, dDepth: 30, scale: 1.35 },
       fireball: { tex: 'fx_2001', anim: 'fx_fireball_anim', dy: -8, dDepth: 25, scale: 0.95 },
-      lightning_strike: { tex: 'fx_2005', anim: 'fx_lightning_strike_anim', dy: 6, dDepth: 30, scale: 1.1 },
-      hellfire: { tex: 'fx_2004', anim: 'fx_hellfire_anim', dy: 0, dDepth: 25, scale: 1.35 },
+      lightning_strike: { tex: 'fx_2002', anim: 'fx_lightning_strike_anim', dy: -26, dDepth: 200, scale: 0.46 },
       heal_spell: { tex: 'fx_3001', anim: 'fx_heal_spell_anim', dy: -12, dDepth: 35, scale: 1.1, followPlayer: true },
-      summon_skeleton: { tex: 'fx_3003', anim: 'fx_summon_skeleton_anim', dy: 4, dDepth: 20, scale: 1.05 },
-      ghost_fire_curse: { tex: 'fx_3008', anim: 'fx_ghost_fire_curse_anim', dy: -6, dDepth: 25, scale: 1.1 }
+      summon_skeleton: { tex: 'fx_3008', anim: 'fx_summon_skeleton_anim', dy: 4, dDepth: 20, scale: 1.05 },
     };
 
     const newEffects = game.takeEffects();
@@ -740,10 +741,41 @@ export class BattleScene extends Phaser.Scene {
       const lvl = e.level || 1;
       const levelMult = lvl === 4 ? 2.15 : (lvl === 3 ? 1.65 : (lvl === 2 ? 1.3 : 1.0));
 
-      if (e.type==='fireball' && e.targetX!==undefined && e.targetY!==undefined) {
-        const bolt=this.trackSprite(this.add.sprite(e.x,e.y,'fx_2001').setDepth(2000));
+      if (e.type === 'lion_roar' && e.radius) {
+        if (!this.textures.exists('roar_wave')) {
+          const wave = this.textures.createCanvas('roar_wave', 128, 128);
+          if (wave) {
+            const ctx = wave.context;
+            const glow = ctx.createRadialGradient(64, 64, 48, 64, 64, 63);
+            glow.addColorStop(0, 'transparent');
+            glow.addColorStop(.8, 'rgba(205,255,176,.7)');
+            glow.addColorStop(1, 'transparent');
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, 128, 128);
+            wave.refresh();
+          }
+        }
+        const ring = this.trackSprite(this.add.sprite(e.x,e.y,'roar_wave').setDepth(e.y + 10).setScale(.25));
+        this.trackTween({targets:ring, scale:e.radius / 63, alpha:0, duration:400, onComplete:()=>ring.destroy()});
+      }
+
+      if (e.type === 'hellfire' && e.targetX !== undefined && e.targetY !== undefined) {
+        const dx = e.targetX - e.x, dy = e.targetY - e.y;
+        const segments = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 52));
+        for (let i = 1; i <= segments; i++) {
+          const x = e.x + dx * i / segments, y = e.y + dy * i / segments;
+          this.scheduleFx(i * 18, () => this.spawnSkillEffect(x, y - 8, 'fx_2007', 'fx_hellfire_anim', y + 35, .8));
+        }
+        continue;
+      }
+
+      if ((e.type === 'fireball' || e.type === 'shinsu_hit') && e.targetX!==undefined && e.targetY!==undefined) {
+        if (this.fxSprites.size >= 42) continue;
+        const angle = Math.atan2(e.targetY - e.y, e.targetX - e.x);
+        const bolt=this.trackSprite(this.add.sprite(e.x,e.y-12,'fx_2001').setDepth(2000));
+        bolt.setRotation(angle).setScale(e.type === 'shinsu_hit' ? .55 : .8);
         bolt.play('fx_fireball_track_anim');
-        this.trackTween({targets:bolt,x:e.targetX,y:e.targetY,duration:160,onComplete:()=>{
+        this.trackTween({targets:bolt,x:e.targetX,y:e.targetY-12,duration:160,onComplete:()=>{
           this.spawnSkillEffect(bolt.x,bolt.y,'fx_2001','fx_fireball_anim',2000,.8+lvl*.12);
           bolt.destroy();
         }});
@@ -774,20 +806,20 @@ export class BattleScene extends Phaser.Scene {
         );
       }
 
-      if (e.type === 'talisman') {
-        if (!castPlayedThisTick.has('talisman')) {
+      if (e.type === 'talisman' || e.type === 'ghost_fire_curse') {
+        if (e.type === 'talisman' && !castPlayedThisTick.has('talisman')) {
           castPlayedThisTick.add('talisman');
           this.spawnSkillEffect(
             this.playerSprite.x,
             this.playerSprite.y + 16,
-            'fx_3011',
+            'fx_3002',
             'fx_talisman_cast_anim',
             this.playerSprite.y - 1,
             0.85 * levelMult
           );
         }
         if (e.targetX !== undefined && e.targetY !== undefined) {
-          this.spawnTalismanProjectile(e.x, e.y, e.targetX, e.targetY, lvl);
+          this.spawnTalismanProjectile(e.x, e.y, e.targetX, e.targetY, lvl, e.type === 'ghost_fire_curse');
         }
         continue;
       }
@@ -1016,6 +1048,15 @@ export class BattleScene extends Phaser.Scene {
       frames.push(...this.textures.get('fx_1102_more').getFrameNames().filter(f=>f.startsWith(prefix)).map(frame=>({key:'fx_1102_more',frame})));
     }
     frames.sort((a,b)=>a.frame.localeCompare(b.frame));
+    // Melee hits resolve immediately. Some strips start with transparent 3×3 placeholders.
+    if (prefix.includes('/attack/')) {
+      const firstVisible = frames.findIndex(({key, frame}) => {
+        const f = this.textures.getFrame(key, frame);
+        return f.cutWidth > 3 || f.cutHeight > 3;
+      });
+      if (firstVisible < 0) return;
+      frames.splice(0, firstVisible);
+    }
     if (!frames.length) return;
 
     this.anims.create({
@@ -1067,11 +1108,12 @@ export class BattleScene extends Phaser.Scene {
     this.createAnimFromAtlas('fx_lion_roar_anim','fx_3303','3303/casting/',16,0);
     this.createAnimFromAtlas('fx_fireball_track_anim','fx_2001','2001/track/',18,-1);
     this.createAnimFromAtlas('fx_fireball_anim', 'fx_2001', '2001/hit/', 15, 0);
-    this.createAnimFromAtlas('fx_lightning_strike_anim', 'fx_2005', '2005/hit/', 16, 0);
-    this.createAnimFromAtlas('fx_hellfire_anim', 'fx_2004', '2004/loop/', 15, 0);
+    this.createAnimFromAtlas('fx_lightning_strike_anim', 'fx_2002', '2002/hit/', 16, 0);
+    this.createAnimFromAtlas('fx_hellfire_anim', 'fx_2007', '2007/hit/', 15, 0);
     this.createAnimFromAtlas('fx_heal_spell_anim', 'fx_3001', '3001/hit/', 14, 0);
-    this.createAnimFromAtlas('fx_summon_skeleton_anim', 'fx_3003', '3003/hit/', 14, 0);
-    this.createAnimFromAtlas('fx_ghost_fire_curse_anim', 'fx_3008', '3008/hit/', 15, 0);
+    this.createAnimFromAtlas('fx_summon_skeleton_anim', 'fx_3008', '3008/hit/', 14, 0);
+    this.createAnimFromAtlas('fx_curse_fly_anim', 'fx_3011', '3011/track/', 14, -1);
+    this.createAnimFromAtlas('fx_curse_hit_anim', 'fx_3011', '3011/hit/', 15, 0);
     this.createAnimFromAtlas('fx_hell_thunder_anim', 'fx_2003', '2003/hit/', 16, 0);
     this.createAnimFromAtlas('fx_poison_anim', 'fx_3004', '3004/hit/', 12, 0);
     this.createAnimFromAtlas('fx_poison_cast_anim', 'fx_3004', '3004/casting/', 14, 0);
@@ -1079,14 +1121,13 @@ export class BattleScene extends Phaser.Scene {
     this.createAnimFromAtlas('fx_diamond_body_cast_anim', 'fx_1008', '1008/casting/', 14, 0);
     this.createAnimFromAtlas('fx_wind_shield_cast_anim', 'fx_2009', '2009/loop/', 12, -1);
     this.createAnimFromAtlas('fx_shinsu_anim', 'fx_3007', '3007/hit/', 14, 0);
-    this.createAnimFromAtlas('fx_shinsu_hit_anim', 'fx_2001', '2001/hit/', 14, 0);
     this.createAnimFromAtlas('fx_skeleton_anim', 'fx_3012', '3012/hit/', 13, 0);
     this.createAnimFromAtlas('fx_meteor_boom_anim', 'fx_2202', '2202/hit/', 16, 0);
     this.createAnimFromAtlas('fx_meteor_drop_anim', 'fx_2202', '2202/track/', 16, 0);
     this.createAnimFromAtlas('fx_meteor_cast_anim', 'fx_2011', '2011/casting/', 14, 0);
-    this.createAnimFromAtlas('fx_talisman_fly_anim', 'fx_3011', '3011/track/', 14, -1);
-    this.createAnimFromAtlas('fx_talisman_hit_anim', 'fx_3011', '3011/hit/', 15, 0);
-    this.createAnimFromAtlas('fx_talisman_cast_anim', 'fx_3011', '3011/casting/', 14, 0);
+    this.createAnimFromAtlas('fx_talisman_fly_anim', 'fx_3002', '3002/track/', 14, -1);
+    this.createAnimFromAtlas('fx_talisman_hit_anim', 'fx_3002', '3002/hit/', 15, 0);
+    this.createAnimFromAtlas('fx_talisman_cast_anim', 'fx_3002', '3002/casting/', 14, 0);
   }
 }
 

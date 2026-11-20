@@ -14,13 +14,13 @@ export function Head({title,close}:{title:string;close:()=>void}) {
 }
 export function Records({journal}:{journal:Journal}) {
   return <><p>通关 {journal.cleared.length} / {Object.keys(chapters).length} 章 · 库银 {journal.bank}</p>
-    {!journal.recent.length && <p>完成一次出征后，这里会留下战绩。</p>}
+    {!journal.recent.length && <p>暂无战绩</p>}
     {journal.recent.map(r=><div className="entry" key={r.id}><b>{chapters[r.chapter]?.name.split(' · ')[0]} · {{victory:'通关',game_over:'阵亡',retired:'撤离'}[r.outcome]}</b>
       <small>{jobs[r.role]} · {curves[r.difficulty]?.name} · {time(r.seconds)} · {r.kills} 斩 · 入库 {r.coins}</small></div>)}
-    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.1</a></p></>;
+    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.2</a></p></>;
 }
 export function TrainingPanel({journal,buy}:{journal:Journal;buy:(id:keyof Training)=>void}) {
-  return <><p>库银 {journal.bank} · 修行从下次出征生效</p>
+  return <><p>库银 {journal.bank} · 下局生效</p>
     {(Object.keys(disciplines) as (keyof Training)[]).map(id=>{
       const rank=journal.training[id], cost=trainingCost(rank);
       return <div className="entry split" key={id}><span><b>{disciplines[id].name} · {rank}/5 重</b><small>{disciplines[id].description}</small></span>
@@ -32,12 +32,12 @@ export function Loadout({changed}:{changed:()=>void}) {
   const change=(replacement?:string)=>{
     if(selected && game.changeSkill(selected,replacement)){select(null);changed();}
   };
-  if(selected) return <><p>{skills[selected].name} · 替换后从 1 级修炼 · 持有 {game.player.gold} 金</p>
+  if(selected) return <><p>{skills[selected].name} · 替换后为 1 级 · {game.player.gold} 金</p>
     {game.availableReplacements().map(s=><button key={s.id} className="row" disabled={game.player.gold<80} onClick={()=>change(s.id)}>
       <img src={media('skills',s.iconId)} alt=""/><span><b>{s.name}</b><small>替换 · 80 金</small></span></button>)}
-    <div className="actions"><button onClick={()=>select(null)}>返回配置</button>
+    <div className="actions"><button onClick={()=>select(null)}>返回</button>
       <button disabled={game.activeSkills.length<=1} onClick={()=>change()}>卸下{skills[selected].name}</button></div></>;
-  return <><small>装备 · 拾取时穿戴高品，低品折金</small>
+  return <><small>装备 · 高品自动穿戴，其余售出</small>
     <div className="gear-grid">{(['weapon','armor'] as const).map(slot=>{
       const rank=game.equipment[slot], item=gearInfo(game.heroClass,slot,rank);
       return <div key={slot}><img src={media('items',item.icon)} alt=""/><span>{item.title}<small>{slot==='weapon'?'伤害 +'+rank*19+'%':'减伤 '+rank*7.5+'%'}</small></span></div>;

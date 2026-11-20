@@ -10,7 +10,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     classType: 'wizard',
     iconId: 2001,
     quality: 'common',
-    desc: '向最近目标释放 1 颗火球。',
+    desc: '向近敌发射火球。',
     cooldown: 0.95,
     damage: 38,
     area: 45,
@@ -18,8 +18,8 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     soundKey: 'skill_fireball',
     maxLevel: 4,
     upgrades: [
-      { level: 1, title: '初凝真火', description: '向最近目标释放 1 颗火球。' },
-      { level: 2, title: '连环飞火', description: '单发基础伤害提高，冷却缩短。' },
+      { level: 1, title: '初凝真火', description: '向近敌发射火球。' },
+      { level: 2, title: '连环飞火', description: '伤害提高，冷却缩短。' },
       { level: 3, title: '三昧真焰', description: '最多攻击 2 个目标，附加 2 秒灼烧。' },
       { level: 4, title: '【爆炎连珠·质变】', description: '最多攻击 3 个目标，每颗必定暴击并溅射。' }
     ]
@@ -28,9 +28,9 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     id: 'lightning_strike',
     name: '雷电术',
     classType: 'wizard',
-    iconId: 2005,
+    iconId: 2002,
     quality: 'rare',
-    desc: '单道落雷，麻痹 0.4 秒。',
+    desc: '落雷麻痹目标 0.4 秒。',
     cooldown: 1.35,
     damage: 64,
     area: 60,
@@ -38,7 +38,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     soundKey: 'skill_lightning',
     maxLevel: 4,
     upgrades: [
-      { level: 1, title: '九天落雷', description: '单道落雷，麻痹 0.4 秒。' },
+      { level: 1, title: '九天落雷', description: '落雷麻痹目标 0.4 秒。' },
       { level: 2, title: '狂雷震岳', description: '落雷伤害提高，冷却缩短。' },
       { level: 3, title: '双雷齐至', description: '最多 2 道落雷，麻痹延长至 0.8 秒。' },
       { level: 4, title: '【乾坤天劫·质变】', description: '最多同时劈中 3 个目标。' }
@@ -48,17 +48,17 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     id: 'hellfire',
     name: '地狱火',
     classType: 'wizard',
-    iconId: 2004,
+    iconId: 2007,
     quality: 'rare',
-    desc: '向最近目标喷出直线穿透火焰。',
+    desc: '火焰沿直线穿透敌人。',
     cooldown: 2.1,
     damage: 48,
     area: 130,
     range: 260,
-    soundKey: 'skill_firewall',
+    soundKey: 'skill_hellfire',
     maxLevel: 4,
     upgrades: [
-      { level: 1, title: '烈火一线', description: '向最近目标喷出直线穿透火焰。' },
+      { level: 1, title: '烈火一线', description: '火焰沿直线穿透敌人。' },
       { level: 2, title: '炽焰延伸', description: '火道延长 80，命中伤害提高。' },
       { level: 3, title: '业火焚躯', description: '火道附带 3 秒灼烧。' },
       { level: 4, title: '【焚界炎龙·质变】', description: '火道直击与持续灼烧再次增强。' }
@@ -110,7 +110,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     classType: 'wizard',
     iconId: 2008,
     quality: 'mythic',
-    desc: '冻结目标周围的空气，减速 2.2 秒。',
+    desc: '范围冰爆，减速 2.2 秒。',
     cooldown: 3.2,
     damage: 85,
     area: 170,
@@ -118,7 +118,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     soundKey: 'skill_iceroar',
     maxLevel: 4,
     upgrades: [
-      { level: 1, title: '寒风呼啸', description: '冻结目标周围的空气，减速 2.2 秒。' },
+      { level: 1, title: '寒风呼啸', description: '范围冰爆，减速 2.2 秒。' },
       { level: 2, title: '极地玄冰', description: '冰爆半径与伤害提高。' },
       { level: 3, title: '绝对零度', description: '冰爆半径额外扩大 30%。' },
       { level: 4, title: '【九幽冰狱·质变】', description: '减速持续 3.5 秒，额外定身 1.2 秒。' }
@@ -148,7 +148,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     id: 'celestial_meteor',
     name: '流星火雨',
     classType: 'wizard',
-    iconId: 2202,
+    iconId: 2011,
     quality: 'legendary',
     desc: '召唤 1 颗陨石轰击怪群。',
     cooldown: 5.5,
@@ -316,7 +316,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     id: 'soul_talisman',
     name: '灵魂火符',
     classType: 'taoist',
-    iconId: 3011,
+    iconId: 3002,
     quality: 'common',
     desc: '飞符锁定最近的 1 个目标。',
     cooldown: 1.05,
@@ -348,8 +348,8 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     upgrades: [
       { level: 1, title: '甘霖润体', description: '恢复 35 点气血。' },
       { level: 2, title: '慈航普渡', description: '每次恢复 55 点气血。' },
-      { level: 3, title: '太清神愈', description: '每次恢复 80 点，随从回满生命。' },
-      { level: 4, title: '【枯木逢春·质变】', description: '每次恢复 110 点，冷却进一步缩短。' }
+      { level: 3, title: '太清神愈', description: '回血 80，随从回满。' },
+      { level: 4, title: '【枯木逢春·质变】', description: '回血 110，冷却缩短。' }
     ]
   },
   poison_cloud: {
@@ -358,7 +358,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     classType: 'taoist',
     iconId: 3004,
     quality: 'rare',
-    desc: '毒雾持续 4 秒，附加持续伤害与 20% 易伤。',
+    desc: '中毒 4 秒，易伤 20%。',
     cooldown: 3.2,
     damage: 32,
     area: 140,
@@ -366,7 +366,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     soundKey: 'skill_poison',
     maxLevel: 4,
     upgrades: [
-      { level: 1, title: '阴阳双毒', description: '毒雾持续 4 秒，附加持续伤害与 20% 易伤。' },
+      { level: 1, title: '阴阳双毒', description: '中毒 4 秒，易伤 20%。' },
       { level: 2, title: '漫天毒瘴', description: '毒雾范围扩大，持续时间增至 6 秒。' },
       { level: 3, title: '蛊毒钻心', description: '直击和每次毒伤提高。' },
       { level: 4, title: '【万劫蛊王·质变】', description: '易伤增至 45%，额外减速 4 秒。' }
@@ -376,7 +376,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     id: 'summon_skeleton',
     name: '召唤骷髅',
     classType: 'taoist',
-    iconId: 3003,
+    iconId: 3008,
     quality: 'rare',
     desc: '维持 1 具护卫骷髅。',
     cooldown: 5.5,
@@ -396,7 +396,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     id: 'ghost_fire_curse',
     name: '幽冥火咒',
     classType: 'taoist',
-    iconId: 3008,
+    iconId: 3011,
     quality: 'epic',
     desc: '冥符锁定 1 个目标。',
     cooldown: 1.8,
@@ -409,7 +409,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
       { level: 1, title: '幽火化符', description: '冥符锁定 1 个目标。' },
       { level: 2, title: '冥符追魂', description: '最多攻击 2 个目标，附带溅射。' },
       { level: 3, title: '九幽摄魄', description: '最多攻击 3 个目标，并减速 1.5 秒。' },
-      { level: 4, title: '【太极道煞·质变】', description: '最多攻击 5 个目标，扩大溅射半径。' }
+      { level: 4, title: '【太极道煞·质变】', description: '最多攻击 5 个目标。' }
     ]
   },
   shinsu_summon: {
@@ -418,7 +418,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     classType: 'taoist',
     iconId: 3007,
     quality: 'mythic',
-    desc: '召唤 1 只神兽，其火焰波及目标附近敌人。',
+    desc: '神兽喷火，波及周围敌人。',
     cooldown: 6.5,
     damage: 75,
     area: 130,
@@ -426,7 +426,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     soundKey: 'skill_shinsu',
     maxLevel: 4,
     upgrades: [
-      { level: 1, title: '神兽降世', description: '召唤 1 只神兽，其火焰波及目标附近敌人。' },
+      { level: 1, title: '神兽降世', description: '神兽喷火，波及周围敌人。' },
       { level: 2, title: '神兽狂怒', description: '神兽吐息伤害提高。' },
       { level: 3, title: '圣兽烈阳', description: '神兽吐息伤害进一步提高。' },
       { level: 4, title: '【天尊金乌神兽·质变】', description: '可同时召唤 2 只神兽。' }
@@ -463,7 +463,7 @@ export const WOOWL_SKILLS: Record<string, SkillDefinition> = {
     damage: 95,
     area: 250,
     range: 0,
-    soundKey: 'skill_holyword',
+    soundKey: 'skill_repel',
     maxLevel: 4,
     upgrades: [
       { level: 1, title: '佛门狮吼', description: '吼退周围敌人，定身 1.4 秒。' },
@@ -480,7 +480,7 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '传世神兵玄晶',
     iconId: 2010210,
     iconType: 'item',
-    desc: '淬炼上古黑水晶戒指精魄，提升所有招式技能威力与破坏力。',
+    desc: '每级伤害 +15%。',
     maxLevel: 4,
     effect: { damageMod: 0.15 }
   },
@@ -489,7 +489,7 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '风雷神行步',
     iconId: 2030410,
     iconType: 'item',
-    desc: '装备传世鹿皮战靴，身若游龙，穿梭于千军万马，大幅提升移动速度。',
+    desc: '每级移速 +15%。',
     maxLevel: 4,
     effect: { speedMod: 0.15 }
   },
@@ -498,7 +498,7 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '天山雪莲玉髓',
     iconId: 2030310,
     iconType: 'item',
-    desc: '佩戴凤凰项链秘宝，大幅增加生命上限，并赋予源源不断的自然回血能力。',
+    desc: '每级气血 +20%，每秒回血 +2。',
     maxLevel: 4,
     effect: { hpMod: 0.2, hpRegen: 2 }
   },
@@ -507,7 +507,7 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '深渊魔晶珠',
     iconId: 2020210,
     iconType: 'item',
-    desc: '镶嵌魔眼魔晶法戒，引聚天地灵气波纹，扩大所有技能的打击范围与影响范围。',
+    desc: '每级技能范围 +20%。',
     maxLevel: 4,
     effect: { areaMod: 0.2 }
   },
@@ -516,7 +516,7 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '太极洗髓金丹',
     iconId: 2030210,
     iconType: 'item',
-    desc: '通灵珍珠法戒之灵力，打通奇经八脉，气血流转神速，缩短所有招式冷却间隔。',
+    desc: '每级冷却 −12%。',
     maxLevel: 4,
     effect: { cooldownMod: -0.12 }
   },
@@ -525,7 +525,7 @@ export const WOOWL_PASSIVES: Record<string, PassiveDefinition> = {
     name: '玛法乾坤引力石',
     iconId: 2030610,
     iconType: 'item',
-    desc: '佩戴玛法金银手镯，内蕴乾坤磁场，大幅扩大战利品、金币与灵力结晶的磁吸距离。',
+    desc: '每级拾取距离 +40%。',
     maxLevel: 4,
     effect: { pickupRangeMod: 0.4 }
   }
