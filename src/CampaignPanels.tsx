@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { game } from './game';
 import { WOOWL_SKILLS as skills, WOOWL_PASSIVES as passives } from './config/skills';
 import { WOOWL_CHAPTERS as chapters } from './config/chapters';
-import { WOOWL_DIFFICULTY_CURVES as curves } from './config/curves';
+import { AWAKENING_TIME, WOOWL_DIFFICULTY_CURVES as curves } from './config/curves';
 import { disciplines, gearInfo, trainingCost, type Training } from './config/equipment';
 import type { Journal } from './journal';
 
@@ -17,7 +17,7 @@ export function Records({journal}:{journal:Journal}) {
     {!journal.recent.length && <p>暂无战绩</p>}
     {journal.recent.map(r=><div className="entry" key={r.id}><b>{chapters[r.chapter]?.name.split(' · ')[0]} · {{victory:'通关',game_over:'阵亡',retired:'撤离'}[r.outcome]}</b>
       <small>{jobs[r.role]} · {curves[r.difficulty]?.name} · {time(r.seconds)} · {r.kills} 斩 · 入库 {r.coins}</small></div>)}
-    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.3</a></p></>;
+    <p><a className="source-link" href="https://github.com/holynova/woool-survivor-mobile" target="_blank" rel="noreferrer">GitHub · v1.0.4</a></p></>;
 }
 export function TrainingPanel({journal,buy}:{journal:Journal;buy:(id:keyof Training)=>void}) {
   return <><p>库银 {journal.bank} · 下局生效</p>
@@ -43,6 +43,6 @@ export function Loadout({changed}:{changed:()=>void}) {
       return <div key={slot}><img src={media('items',item.icon)} alt=""/><span>{item.title}<small>{slot==='weapon'?'伤害 +'+rank*19+'%':'减伤 '+rank*7.5+'%'}</small></span></div>;
     })}</div>
     <small>技能 · {game.activeSkills.length}/5</small>
-    {game.activeSkills.map(s=><button className="row" key={s.id} onClick={()=>select(s.id)}><img src={media('skills',skills[s.id].iconId)} alt=""/><b>{skills[s.id].name} · {s.level} 级</b><span className="tail">调整 ›</span></button>)}
+    {game.activeSkills.map(s=><button className="row" key={s.id} onClick={()=>select(s.id)}><img src={media('skills',skills[s.id].iconId)} alt=""/><span><b>{skills[s.id].name} · {s.level}/5</b><small>{s.level===5 ? '已觉醒' : game.clock<AWAKENING_TIME ? time(AWAKENING_TIME)+' 开放觉醒' : '五级觉醒'} · {skills[s.id].upgrades[4].title}</small></span><span className="tail">调整 ›</span></button>)}
     {!!game.activePassives.length&&<p>{game.activePassives.map(p=>passives[p.id].name+' '+p.level+'级').join(' · ')}</p>}</>;
 }

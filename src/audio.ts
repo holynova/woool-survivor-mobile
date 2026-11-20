@@ -13,14 +13,13 @@ class AudioManager {
   private bgmVolume = 0.42;
   private sfxVolume = 0.5;
 
-  // BGM streaming audio elements
-  private bgmElements: Record<BgmTrack, HTMLAudioElement | null> = {
-    menu: null,
-    battle: null,
-    boss: null
+  private music:HTMLAudioElement|null=null;
+  private musicFile='';
+  private currentBgmTrack:BgmTrack|null=null;
+  private readonly chapterTracks: Record<string,string>={
+    sunset_island:'HJLX',central_state:'HJZZ',hot_desert:'HJQGD',
+    deadwater_marsh:'HJSWY0-5',frozen_citadel:'HJJD',iron_citadel:'txmc'
   };
-  private currentBgmTrack: BgmTrack | null = null;
-  private bgmFadeInterval: any = null;
 
   // SFX Throttling to prevent audio stuttering on multi-pickups
   private lastCoinTime = 0;
@@ -46,28 +45,9 @@ class AudioManager {
     }
   }
 
-  private initBgmElements() {
-    if (typeof window === 'undefined') return;
-    if (!this.bgmElements.menu) {
-      const createAudio = (file: string) => {
-        const audio = new Audio(assetUrl(`assets/sound/${file}`));
-        audio.loop = true;
-        audio.preload = 'none';
-        audio.volume = 0;
-        return audio;
-      };
-
-      try {
-        this.bgmElements.menu = createAudio('bgm_menu.mp3');
-        this.bgmElements.battle = createAudio('bgm_battle.mp3');
-        this.bgmElements.boss = createAudio('bgm_boss.mp3');
-      } catch {}
-    }
-  }
-
   async init(role: HeroClass): Promise<void> {
     this.initCtx();
-    this.initBgmElements();
+
     const sounds=new Set(['ui_click','coin','potion','player_hurt','player_die','monster_hurt','monster_die','skill_holyword']);
     for(const skill of Object.values(WOOWL_SKILLS)) if(skill.classType===role) sounds.add(skill.soundKey);
     if(role==='taoist'){sounds.add('skill_slash');sounds.add('skill_fireball');}
@@ -189,76 +169,24 @@ class AudioManager {
     osc.stop(t + 0.9);
   }
 
-  playBgm(track: BgmTrack) {
-    this.initBgmElements();
-    if (this.currentBgmTrack === track) return;
-
-    const prevTrack = this.currentBgmTrack;
-    this.currentBgmTrack = track;
-
-    if (this.bgmFadeInterval) {
-      clearInterval(this.bgmFadeInterval);
-      this.bgmFadeInterval = null;
+  playBgm(track:BgmTrack,chapter='sunset_island') {
+    if(typeof Audio==='undefined')return;
+    const file=track==='menu' ? 'selectcharacter2' : track==='boss' ? 'HJLX_Fight' : this.chapterTracks[chapter]??'HJLX';
+    this.currentBgmTrack=track;
+    if(file!==this.musicFile || !this.music){
+      this.music?.pause();
+      this.music ??= new Audio();
+      const path = this.music.canPlayType('audio/ogg; codecs="vorbis"') ? file+'.ogg' : 'compat/'+file+'.mp3';
+      this.music.src = assetUrl('assets/woool/music/'+path);
+      this.music.loop=true;this.music.preload='none';this.music.volume=this.bgmVolume;
+      this.musicFile=file;
     }
-
-    const prevAudio = prevTrack ? this.bgmElements[prevTrack] : null;
-    const nextAudio = this.bgmElements[track];
-
-    if (!nextAudio) return;
-
-    if (this.muted) {
-      if (prevAudio) {
-        prevAudio.pause();
-        prevAudio.currentTime = 0;
-      }
-      nextAudio.volume = 0;
-      nextAudio.play().catch(() => {});
-      return;
-    }
-
-    // Smooth crossfade
-    nextAudio.volume = 0;
-    const playPromise = nextAudio.play();
-    if (playPromise) {
-      playPromise.catch(() => {});
-    }
-
-    let step = 0;
-    const maxSteps = 15;
-    const targetVol = this.bgmVolume;
-
-    this.bgmFadeInterval = setInterval(() => {
-      step++;
-      const ratio = step / maxSteps;
-
-      if (prevAudio && !prevAudio.paused) {
-        prevAudio.volume = this.muted ? 0 : Math.max(0, targetVol * (1 - ratio));
-      }
-      nextAudio.volume = this.muted ? 0 : Math.min(targetVol, targetVol * ratio);
-
-      if (step >= maxSteps) {
-        clearInterval(this.bgmFadeInterval);
-        this.bgmFadeInterval = null;
-        if (prevAudio) {
-          prevAudio.pause();
-          prevAudio.currentTime = 0;
-        }
-        nextAudio.volume = this.muted ? 0 : targetVol;
-      }
-    }, 40);
+    if(!this.muted && this.music.paused)void this.music.play().catch(()=>{});
   }
 
   stopBgm() {
-    if (this.bgmFadeInterval) {
-      clearInterval(this.bgmFadeInterval);
-      this.bgmFadeInterval = null;
-    }
-    if (this.currentBgmTrack && this.bgmElements[this.currentBgmTrack]) {
-      const audio = this.bgmElements[this.currentBgmTrack]!;
-      audio.pause();
-      audio.currentTime = 0;
-      this.currentBgmTrack = null;
-    }
+    this.music?.pause();
+    this.music=null;this.musicFile='';this.currentBgmTrack=null;
   }
 
   private synthesizeRetro(key: string, volume: number) {
@@ -307,15 +235,8 @@ class AudioManager {
   toggleMute(): boolean {
     this.muted = !this.muted;
     try { localStorage.setItem('woool.mobile.muted',this.muted?'1':'0'); } catch {}
-    if (this.muted) {
-      if (this.currentBgmTrack && this.bgmElements[this.currentBgmTrack]) {
-        this.bgmElements[this.currentBgmTrack]!.volume = 0;
-      }
-    } else {
-      if (this.currentBgmTrack && this.bgmElements[this.currentBgmTrack]) {
-        this.bgmElements[this.currentBgmTrack]!.volume = this.bgmVolume;
-      }
-    }
+    if(this.muted)this.music?.pause();
+    else if(this.music)void this.music.play().catch(()=>{});
     return this.muted;
   }
 

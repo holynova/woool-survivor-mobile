@@ -10,12 +10,14 @@ import type {
   MinionEntity,
   DropEntity,
   DamageNumber,
-  EffectEvent,
+  EffectEvent, Flight, FlightKind,
   AlertBanner
 } from './types';
 import { WOOWL_SKILLS, WOOWL_PASSIVES } from './config/skills';
 import { WOOWL_CHAPTERS } from './config/chapters';
 import {
+  AWAKENING_TIME,
+  ELITE_MILESTONES,
   WOOWL_MONSTERS,
   WOOWL_DIFFICULTY_CURVES,
   evaluateCurveState
@@ -26,6 +28,10 @@ import { sound } from './audio';
 
 import { chapterTerrain, monsterFootprint, PLAYER_RADIUS, WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
 export { WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
+
+const flightSpeed: Record<FlightKind, number> = {
+  fireball: 390, talisman: 320, ghost_fire_curse: 345, meteor: 610, shinsu_hit: 345
+};
 
 function choiceTitle(name: string, level: number, isNew: boolean) {
   return isNew ? name + ' · 新' : name + ' · ' + level + '级';
@@ -109,6 +115,7 @@ export class GameEngine {
   drops: DropEntity[] = [];
   damageNumbers: DamageNumber[] = [];
   effects: EffectEvent[] = [];
+  flights: Flight[] = [];
   alertBanner: AlertBanner | null = null;
 
   upgradeChoices: Array<{
@@ -165,6 +172,7 @@ export class GameEngine {
     this.bossSpawned = false;
     this.bossDefeated = false;
     this.monsters = [];
+    this.flights = [];
     this.minions = [];
     this.drops = [];
     this.damageNumbers = [];
@@ -202,12 +210,13 @@ export class GameEngine {
     this.bossSpawned = false;
     this.bossDefeated = false;
     this.monsters = [];
+    this.flights = [];
     this.minions = [];
     this.drops = [];
     this.damageNumbers = [];
     this.effects = [];
     this.alertBanner = null;
-    sound.playBgm('battle');
+    sound.playBgm('battle',this.chapterId);
     this.activeSkills = [];
     this.activePassives = [];
     this.shieldReduction = 0;
@@ -254,7 +263,7 @@ export class GameEngine {
 
   snapshot() {
     return {
-      runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
+      tempoVersion: 2, flights:this.flights, runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
       phase: this.phase, clock: this.clock, wave: this.wave, wavePhaseName: this.wavePhaseName,
       waveProgress: this.waveProgress, waveTimer: this.waveTimer, bossSpawned: this.bossSpawned, bossDefeated: this.bossDefeated,
       eliteTimer: this.eliteTimer, milestones: [...this.spawnedMilestones], spawnAccumulator: this.spawnAccumulator,
@@ -273,7 +282,8 @@ export class GameEngine {
     for (const m of this.monsters) this.terrain.settle(m, monsterFootprint(m));
     for (const m of this.minions) this.terrain.settle(m, 11);
     for (const d of this.drops) this.terrain.settle(d, 5);
-    const guardLimit = this.activeSkills.some(s => s.id === 'summon_skeleton' && s.level >= 3) ? 2 : 1;
+    const guardLevel=this.activeSkills.find(s=>s.id==='summon_skeleton')?.level??0;
+    const guardLimit=guardLevel===5 ? 3 : guardLevel>=3 ? 2 : 1;
     let guards = 0;
     for (const m of this.minions) {
       if (m.type !== 'skeleton' || m.name !== '强化骷髅') continue;
@@ -284,13 +294,15 @@ export class GameEngine {
     for (const choice of this.upgradeChoices) {
       const def = choice.type === 'skill' ? WOOWL_SKILLS[choice.id] : WOOWL_PASSIVES[choice.id];
       if (!def) continue;
-      choice.title = choiceTitle(def.name, choice.level, choice.isNew);
+      choice.title = choice.type==='skill' && choice.level===5 ? def.name+' · 觉醒「'+WOOWL_SKILLS[choice.id].upgrades[4].title+'」' : choiceTitle(def.name,choice.level,choice.isNew);
       choice.iconId = def.iconId;
       choice.description = choice.type === 'skill'
         ? WOOWL_SKILLS[choice.id].upgrades.find(u => u.level === choice.level)?.description ?? def.desc
         : def.desc;
     }
-    this.spawnedMilestones = new Set(milestones);
+    this.flights=state.flights ?? [];
+    this.spawnedMilestones = new Set(state.tempoVersion===2 ? milestones : ELITE_MILESTONES.filter(mark=>mark<=this.clock));
+    // A legacy checkpoint keeps elapsed time and its current boss, without stacking overdue elites.
     this.phase = state.phase === 'level_up' ? 'level_up' : 'paused';
     this.effects = [];
     this.damageNumbers = [];
@@ -371,7 +383,8 @@ export class GameEngine {
       this.player.moving = false;
     }
 
-    this.updateSkills(clampedDt);
+    this.updateFlights(clampedDt);
+    if (this.phase === 'battle') this.updateSkills(clampedDt);
     if (this.phase === 'battle') this.updateMinions(clampedDt);
     if (this.phase === 'battle') this.updateMonsterSpawns(clampedDt);
     if (this.phase === 'battle') this.updateMonsterStatuses(clampedDt);
@@ -404,6 +417,59 @@ export class GameEngine {
         }
       }
     }
+  }
+
+  private launch(kind: FlightKind, origin: {x:number;y:number}, target:{x:number;y:number;id?:number}, damage:number, level:number, radius=0, delay=0) {
+    const shot={id:this.nextEntityId++,kind,x:origin.x,y:origin.y,targetX:target.x,targetY:target.y,
+      targetId:target.id,damage,level,radius,launchAt:this.clock+delay};
+    this.flights.push(shot);
+    this.effects.push({id:shot.id,type:kind,x:origin.x,y:origin.y,targetX:target.x,targetY:target.y,level});
+  }
+
+  private updateFlights(dt:number) {
+    for(const shot of [...this.flights]) {
+      if(this.clock<shot.launchAt) continue;
+      const target=this.monsters.find(m=>m.id===shot.targetId && m.hp>0);
+      if(target){shot.targetX=target.x;shot.targetY=target.y;}
+      const dx=shot.targetX-shot.x, dy=shot.targetY-shot.y, distance=Math.hypot(dx,dy);
+      const step=flightSpeed[shot.kind]*Math.min(dt,this.clock-shot.launchAt);
+      if(distance>step && distance>.01) {
+        shot.x+=dx*step/distance; shot.y+=dy*step/distance;
+        continue;
+      }
+      this.flights.splice(this.flights.indexOf(shot),1);
+      this.effects.push({id:this.nextEntityId++,type:shot.kind,impact:true,x:shot.targetX,y:shot.targetY,level:shot.level});
+      const {kind,level,damage}=shot;
+      const nearby=shot.radius ? this.monsters.filter(m=>m.hp>0 && Math.hypot(m.x-shot.targetX,m.y-shot.targetY)<=shot.radius) : [];
+      if(kind==='meteor') {
+        for(const m of nearby) {
+          if(level>=3){m.slowUntil=this.clock+2.5;this.burn(m,damage*.35,3);}
+          if(level===5)m.stunUntil=Math.max(m.stunUntil??0,this.clock+.9);
+          this.damageEnemy(m,damage,true);
+        }
+      } else {
+        if(target){
+          if(kind==='fireball' && level>=3)this.burn(target,damage*.18,2);
+          if(kind==='ghost_fire_curse' && level>=3)target.slowUntil=this.clock+1.5;
+          if(kind==='talisman' && level>=4)target.stunUntil=this.clock+1;
+          if(kind==='talisman' && level===5)target.armorBreak=Math.max(target.armorBreak??0,.3);
+          const crit=kind==='fireball' ? level>=4 || Math.random()<.25 : level>=4 || kind==='shinsu_hit';
+          this.damageEnemy(target,kind==='fireball' && crit ? Math.round(damage*1.5) : damage,crit);
+        }
+        for(const m of nearby) {
+          if(m===target)continue;
+          if(level===5 && (kind==='fireball'||kind==='ghost_fire_curse'))this.burn(m,damage*.22,3);
+          const splashRatio = kind === 'shinsu_hit' ? 0.7 : kind === 'ghost_fire_curse' ? 0.5 : 0.45;
+          this.damageEnemy(m, Math.round(damage * splashRatio));
+        }
+      }
+      if(this.phase!=='battle')break;
+    }
+  }
+
+  private burn(m:MonsterEntity,dps:number,seconds:number) {
+    m.burnUntil=Math.max(m.burnUntil??0,this.clock+seconds);
+    m.burnDps=Math.max(m.burnDps??0,Math.round(dps));
   }
 
   private triggerSkill(id: string, level: number, def: typeof WOOWL_SKILLS[string]): boolean {
@@ -446,6 +512,7 @@ export class GameEngine {
         );
         for (const sMob of shockSplash) {
           hitIds.add(sMob.id);
+          if(level===5)sMob.stunUntil=Math.max(sMob.stunUntil??0,this.clock+.8);
           this.damageEnemy(sMob, Math.round(finalDamage * 0.58), false);
         }
 
@@ -497,6 +564,7 @@ export class GameEngine {
 
       const knockbackDist = level >= 2 ? 75 : 52;
       for (const t of targets) {
+        if(level===5)t.slowUntil=Math.max(t.slowUntil??0,this.clock+2);
         this.damageEnemy(t, finalDamage, true);
         const angle = Math.atan2(t.y - this.player.y, t.x - this.player.x);
         const push = t.isBoss ? knockbackDist * 0.25 : knockbackDist;
@@ -529,30 +597,7 @@ export class GameEngine {
       if (targets.length === 0) return false;
 
       sound.play(def.soundKey);
-      for (const t of targets) {
-        if (t.hp <= 0) continue;
-        this.damageEnemy(t, finalDamage, level >= 4);
-        if (level >= 3) {
-          t.slowUntil = Math.max(t.slowUntil || 0, this.clock + 1.5);
-        }
-        if (level >= 2) {
-          const splashRadius = level >= 3 ? 75 : 60;
-          for (const adj of this.monsters) {
-            if (adj.id !== t.id && adj.hp > 0 && Math.hypot(adj.x - t.x, adj.y - t.y) <= splashRadius) {
-              this.damageEnemy(adj, Math.round(finalDamage * 0.5), false);
-            }
-          }
-        }
-        this.effects.push({
-          id: this.nextEntityId++,
-          type: 'ghost_fire_curse',
-          x: this.player.x,
-          y: this.player.y,
-          targetX: t.x,
-          targetY: t.y,
-          level
-        });
-      }
+      for (const target of targets) this.launch('ghost_fire_curse',this.player,target,finalDamage,level,level>=3 ? 75 : level>=2 ? 60 : 0);
       return true;
     }
 
@@ -571,24 +616,7 @@ export class GameEngine {
         if (!anchor) continue;
         const impactX = anchor.x + (i > 0 ? (Math.random() - 0.5) * 90 : 0);
         const impactY = anchor.y + (i > 0 ? (Math.random() - 0.5) * 90 : 0);
-        this.effects.push({
-          id: this.nextEntityId++,
-          type: 'meteor',
-          x: impactX,
-          y: impactY,
-          radius: finalArea,
-          level
-        });
-
-        const inArea = this.monsters.filter(m => Math.hypot(m.x - impactX, m.y - impactY) <= finalArea);
-        for (const m of inArea) {
-          this.damageEnemy(m, finalDamage, true);
-          if (level >= 3) {
-            m.slowUntil = Math.max(m.slowUntil || 0, this.clock + 2.5);
-            m.burnUntil = Math.max(m.burnUntil || 0, this.clock + 3.0);
-            m.burnDps = Math.max(m.burnDps || 0, Math.round(finalDamage * 0.35));
-          }
-        }
+        this.launch('meteor',{x:impactX,y:impactY-360},{x:impactX,y:impactY},finalDamage,level,finalArea,i*.13);
       }
       return true;
     }
@@ -612,6 +640,7 @@ export class GameEngine {
       for (const m of inRange) {
         if (level >= 4) m.armorBreak = Math.max(m.armorBreak || 0, 0.35);
         this.damageEnemy(m, Math.round(finalDamage * (hits === 2 ? 1.45 : 1.0)), true);
+        if(level===5)m.stunUntil=Math.max(m.stunUntil??0,this.clock+1);
         if (m.hp > 0) {
           const angle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
           const push = m.isBoss ? 25 : level >= 3 ? 95 : 65;
@@ -640,13 +669,14 @@ export class GameEngine {
       });
 
       for (const m of inRange) {
+        const detonation=level===5 && (m.poisonUntil??0)>this.clock ? m.poisonDps??0 : 0;
         m.poisonUntil = Math.max(m.poisonUntil || 0, this.clock + (level >= 2 ? 6.0 : 4.0));
         m.poisonDps = Math.max(m.poisonDps || 0, Math.round(finalDamage * 0.85));
         m.armorBreak = Math.max(m.armorBreak || 0, level >= 4 ? 0.45 : 0.2);
         if (level >= 4) {
           m.slowUntil = Math.max(m.slowUntil || 0, this.clock + 4.0);
         }
-        this.damageEnemy(m, finalDamage, false);
+        this.damageEnemy(m, finalDamage+detonation, false);
       }
       return true;
     }
@@ -689,6 +719,7 @@ export class GameEngine {
 
       const inPath = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= impactR);
       for (const m of inPath) {
+        if(level===5)m.armorBreak=Math.max(m.armorBreak??0,.35);
         m.stunUntil = Math.max(m.stunUntil || 0, this.clock + 0.7);
         this.damageEnemy(m, Math.round(finalDamage * (level >= 4 ? 1.45 : 1.0)), true);
       }
@@ -699,6 +730,7 @@ export class GameEngine {
       sound.play(def.soundKey);
       this.player.shieldUntil = this.clock + 4.5 + (level - 1) * 0.9;
       this.shieldReduction = Math.min(0.68, 0.38 + (level - 1) * 0.08);
+      if(level===5)this.player.hp=Math.min(this.player.maxHp,this.player.hp+Math.round(this.player.maxHp*.06));
       this.thornRatio = level >= 2 ? 0.55 : 0;
       this.effects.push({
         id: this.nextEntityId++,
@@ -725,6 +757,7 @@ export class GameEngine {
       });
       const nearby = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= finalArea);
       for (const m of nearby) {
+        if(level===5)m.slowUntil=Math.max(m.slowUntil??0,this.clock+3);
         this.damageEnemy(m, finalDamage, false);
         const angle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
         const push = m.isBoss ? 25 : 85;
@@ -753,7 +786,7 @@ export class GameEngine {
       const cleaveR = level >= 3 ? 115 : 80;
       const hitList = this.monsters.filter(m => Math.hypot(m.x - target.x, m.y - target.y) <= cleaveR);
       for (const m of hitList) {
-        this.damageEnemy(m, Math.round(finalDamage * burstMult), true);
+        this.damageEnemy(m, Math.round(finalDamage * burstMult * (level===5 && (m.burnUntil??0)>this.clock ? 1.6 : 1)), true);
         if (level >= 2) {
           m.burnUntil = Math.max(m.burnUntil || 0, this.clock + 3.0);
             m.burnDps = Math.max(m.burnDps || 0, Math.round(finalDamage * .18));
@@ -777,9 +810,10 @@ export class GameEngine {
       });
       const inRange = this.monsters.filter(m => Math.hypot(m.x - target.x, m.y - target.y) <= iceRadius);
       for (const m of inRange) {
+        const shatter=level===5 && (m.slowUntil??0)>this.clock;
         m.slowUntil = Math.max(m.slowUntil || 0, this.clock + (level >= 4 ? 3.5 : 2.2));
         if (level >= 4) m.stunUntil = Math.max(m.stunUntil || 0, this.clock + 1.2);
-        this.damageEnemy(m, finalDamage, level >= 3);
+        this.damageEnemy(m, shatter ? Math.round(finalDamage*1.6) : finalDamage, level >= 3);
       }
       return true;
     }
@@ -790,29 +824,7 @@ export class GameEngine {
       if (targets.length === 0) return false;
 
       sound.play(def.soundKey);
-      for (const target of targets) {
-        this.effects.push({
-          id: this.nextEntityId++,
-          type: 'fireball',
-          x: this.player.x, y: this.player.y,
-          targetX: target.x, targetY: target.y,
-          level
-        });
-        const isCrit = level >= 4 || Math.random() < 0.25;
-        this.damageEnemy(target, isCrit ? Math.round(finalDamage * 1.5) : finalDamage, isCrit);
-        if (level >= 3) {
-          target.burnUntil = Math.max(target.burnUntil || 0, this.clock + 2.0);
-            target.burnDps = Math.max(target.burnDps || 0, Math.round(finalDamage * .18));
-        }
-        if (level >= 4) {
-          const splashR = 75;
-          for (const m of this.monsters) {
-            if (m.id !== target.id && m.hp > 0 && Math.hypot(m.x - target.x, m.y - target.y) <= splashR) {
-              this.damageEnemy(m, Math.round(finalDamage * 0.45), false);
-            }
-          }
-        }
-      }
+      for (const target of targets) this.launch('fireball',this.player,target,finalDamage,level,level>=4 ? 75 : 0);
       return true;
     }
 
@@ -830,6 +842,7 @@ export class GameEngine {
           y: target.y,
           level
         });
+        if(level===5)target.armorBreak=Math.max(target.armorBreak??0,.30);
         this.damageEnemy(target, finalDamage, level >= 3);
         const stunDuration = level >= 3 ? 0.8 : 0.4;
         target.stunUntil = Math.max(target.stunUntil || 0, this.clock + stunDuration);
@@ -861,12 +874,13 @@ export class GameEngine {
         level
       });
 
+      if(level===5)this.effects.push({id:this.nextEntityId++,type:'hellfire',x:this.player.x,y:this.player.y,targetX:this.player.x-ndx*fireLen,targetY:this.player.y-ndy*fireLen,level});
       for (const m of this.monsters) {
         if (m.hp <= 0) continue;
         const vmx = m.x - this.player.x;
         const vmy = m.y - this.player.y;
         const proj = vmx * ndx + vmy * ndy;
-        if (proj >= 0 && proj <= fireLen) {
+        if (proj >= (level===5 ? -fireLen : 0) && proj <= fireLen) {
           const perp = Math.abs(-ndy * vmx + ndx * vmy);
           if (perp <= fireWidth) {
             this.damageEnemy(m, finalDamage, level >= 4);
@@ -896,12 +910,13 @@ export class GameEngine {
         level
       });
 
+      if(level===5)this.effects.push({id:this.nextEntityId++,type:'attack_slash',x:this.player.x,y:this.player.y,dir:(slashDir+4)%8,level});
       const pushDist = level >= 2 ? 65 : 45;
       for (const m of this.monsters) {
         if (Math.hypot(m.x - this.player.x, m.y - this.player.y) <= hitRadius) {
           const mAngle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
           const diff = Math.abs(mAngle - Math.atan2(target.y - this.player.y, target.x - this.player.x));
-          if (diff <= 1.2 || diff >= Math.PI * 2 - 1.2) {
+          if (diff <= 1.2 || diff >= Math.PI * 2 - 1.2 || (level===5 && Math.abs(diff-Math.PI)<=1.2)) {
             const isCrit = level >= 4 && Math.random() < 0.35;
             this.damageEnemy(m, isCrit ? Math.round(finalDamage * 1.6) : finalDamage, isCrit);
             const push = m.isBoss ? pushDist * 0.2 : pushDist;
@@ -943,6 +958,7 @@ export class GameEngine {
         if (proj >= 0 && proj <= pierceLen) {
           const perp = Math.abs(-andy * vmx + andx * vmy);
           if (perp <= 45) {
+            if(level===5)m.armorBreak=Math.max(m.armorBreak??0,.4);
             this.damageEnemy(m, finalDamage, level >= 4);
           }
         }
@@ -956,26 +972,13 @@ export class GameEngine {
       if (targets.length === 0) return false;
 
       sound.play(def.soundKey);
-      for (const t of targets) {
-        this.effects.push({
-          id: this.nextEntityId++,
-          type: 'talisman',
-          x: this.player.x,
-          y: this.player.y,
-          targetX: t.x,
-          targetY: t.y,
-          level
-        });
-        this.damageEnemy(t, finalDamage, level >= 4);
-        if (level >= 4) {
-          t.stunUntil = Math.max(t.stunUntil || 0, this.clock + 1.0);
-        }
-      }
+      for (const target of targets) this.launch('talisman',this.player,target,finalDamage,level,0);
       return true;
     }
 
     if (id === 'heal_spell') {
       sound.play(def.soundKey);
+      if(level===5)this.player.invulnerableTime=Math.max(1,this.player.invulnerableTime);
       const healAmount = level >= 4 ? 110 : level >= 3 ? 80 : (level >= 2 ? 55 : 35);
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmount);
       this.effects.push({
@@ -994,7 +997,7 @@ export class GameEngine {
     }
 
     if (id === 'summon_skeleton') {
-      const desiredCount = level >= 3 ? 2 : 1;
+      const desiredCount = level === 5 ? 3 : level >= 3 ? 2 : 1;
       const currentSkeletons = this.minions.filter(m => m.type === 'skeleton');
       if (currentSkeletons.length < desiredCount) {
         this.spawnMinion('skeleton', level);
@@ -1027,6 +1030,7 @@ export class GameEngine {
       const thunderRadius = def.area * (level >= 2 ? 1.4 : 1.0);
       for (const m of this.monsters) {
         if (Math.hypot(m.x - target.x, m.y - target.y) <= thunderRadius) {
+          if(level===5)m.slowUntil=Math.max(m.slowUntil??0,this.clock+4);
           this.damageEnemy(m, finalDamage, true);
           m.stunUntil = Math.max(m.stunUntil || 0, this.clock + 1.2);
         }
@@ -1045,6 +1049,7 @@ export class GameEngine {
         level
       });
       const inRange = this.monsters.filter(m => Math.hypot(m.x - this.player.x, m.y - this.player.y) <= finalArea);
+      if(level===5)this.player.hp=Math.min(this.player.maxHp,this.player.hp+Math.min(24,inRange.length*2));
       for (const m of inRange) {
         m.stunUntil = Math.max(m.stunUntil || 0, this.clock + (level >= 4 ? 2.8 : 1.4));
         this.damageEnemy(m, finalDamage, true);
@@ -1073,26 +1078,33 @@ export class GameEngine {
         const dist = Math.hypot(dx, dy);
         m.dir = calcDirection(dx, dy);
 
-        if (dist > 54) {
+        const ranged=m.type==='shinsu' && this.activeSkills.some(s=>s.id==='shinsu_summon' && s.level===5);
+        if (dist > (ranged ? 180 : 54)) {
           this.terrain.move(m, dx / dist * m.speed * dt, dy / dist * m.speed * dt, 11, m.id%2 ? 1 : -1);
         } else if (m.attackCd <= 0) {
+          if(m.type==='shinsu'){
+            this.launch('shinsu_hit',m,target,m.damage,1,95);
+            sound.play('skill_fireball'); m.attackCd=.9;
+            continue;
+          }
+          if(m.type==='enhanced_skeleton' && this.activeSkills.some(s=>s.id==='enhanced_skeleton' && s.level===5))target.armorBreak=Math.max(target.armorBreak??0,.35);
           this.damageEnemy(target, m.damage, true);
-          const cleaveR = m.type === 'shinsu' ? 95 : 65;
+          const cleaveR = 65;
           for (const adj of this.monsters) {
             if (adj.id !== target.id && adj.hp > 0 && Math.hypot(adj.x - target.x, adj.y - target.y) <= cleaveR) {
               this.damageEnemy(adj, Math.round(m.damage * 0.7), false);
             }
           }
-          sound.play(m.type !== 'shinsu' ? 'skill_slash' : 'skill_fireball');
+          sound.play('skill_slash');
           this.effects.push({
             id: this.nextEntityId++,
-            type: m.type !== 'shinsu' ? 'skeleton_hit' : 'shinsu_hit',
-            x: m.type === 'shinsu' ? m.x : target.x,
-            y: m.type === 'shinsu' ? m.y : target.y,
+            type: 'skeleton_hit',
+            x: target.x,
+            y: target.y,
             targetX: target.x, targetY: target.y,
             dir: m.dir
           });
-          m.attackCd = m.type !== 'shinsu' ? 0.58 : 0.9;
+          m.attackCd = .58;
         }
       } else {
         const dx = this.player.x - m.x;
@@ -1151,18 +1163,11 @@ export class GameEngine {
       }
     }
 
-    // Check 5-minute milestone elites (300s, 600s, 900s)
-    if (this.clock >= 300 && !this.spawnedMilestones.has(300)) {
-      this.spawnedMilestones.add(300);
-      this.spawnMilestoneElite(1);
-    }
-    if (this.clock >= 600 && !this.spawnedMilestones.has(600)) {
-      this.spawnedMilestones.add(600);
-      this.spawnMilestoneElite(2);
-    }
-    if (this.clock >= 900 && !this.spawnedMilestones.has(900)) {
-      this.spawnedMilestones.add(900);
-      this.spawnMilestoneElite(3);
+    for (const [index,mark] of ELITE_MILESTONES.entries()) {
+      if(this.clock>=mark && !this.spawnedMilestones.has(mark)){
+        this.spawnedMilestones.add(mark);
+        this.spawnMilestoneElite((index+1) as 1|2|3);
+      }
     }
 
     // Periodic Minor Elite Spawn
@@ -1189,10 +1194,11 @@ export class GameEngine {
 
       const dx = this.player.x - m.x;
       const dy = this.player.y - m.y;
-      const dist = Math.hypot(dx, dy);
+      const dist = Math.hypot(dx, dy) || .001;
       m.dir = calcDirection(dx, dy);
 
-      let moveSpeed = m.speed;
+      // A slower walk at every difficulty, including monsters restored from older saves.
+      let moveSpeed = m.speed * .74;
       if (m.slowUntil && this.clock < m.slowUntil) {
         moveSpeed *= 0.55;
       }
@@ -1203,8 +1209,8 @@ export class GameEngine {
 
       if (m.typeId === 'snake') {
         // Fast slithering serpentine wiggle
-        const perpX = (-dy / dist) * Math.sin(this.clock * 7.5 + m.id) * 60;
-        const perpY = (dx / dist) * Math.sin(this.clock * 7.5 + m.id) * 60;
+        const perpX = (-dy / dist) * Math.sin(this.clock * 4.4 + m.id) * 26;
+        const perpY = (dx / dist) * Math.sin(this.clock * 4.4 + m.id) * 26;
         vx += perpX;
         vy += perpY;
       } else if (m.typeId === 'blade_hound') {
@@ -1223,8 +1229,9 @@ export class GameEngine {
         }
         if (m.burstTimer && m.burstTimer > 0) {
           m.burstTimer -= dt;
-          vx *= 1.6;
-          vy *= 1.6;
+          const burst=1+.42*Math.sin(Math.PI*Math.min(1,Math.max(0,m.burstTimer/1.25)));
+          vx *= burst;
+          vy *= burst;
         }
       }
 
@@ -1365,7 +1372,7 @@ export class GameEngine {
     const x = Math.max(120, Math.min(WORLD_WIDTH - 120, this.player.x + Math.cos(angle) * dist));
     const y = Math.max(120, Math.min(WORLD_HEIGHT - 120, this.player.y + Math.sin(angle) * dist));
 
-    let name = '【五分境霸·狂暴尸王将】';
+    let name = '【境霸·狂暴尸王将】';
     let spriteKey = '20082';
     let scale = 1.95;
     let baseHp = 3600;
@@ -1374,7 +1381,7 @@ export class GameEngine {
     let radius = 48;
 
     if (tier === 2) {
-      name = '【十分境霸·赤炎魔战傀】';
+      name = '【境霸·赤炎魔战傀】';
       spriteKey = '20085';
       scale = 2.2;
       baseHp = 8200;
@@ -1382,7 +1389,7 @@ export class GameEngine {
       exp = 160;
       radius = 56;
     } else if (tier === 3) {
-      name = '【十五分霸主·通天修罗卫】';
+      name = '【境霸·通天修罗卫】';
       spriteKey = '20082';
       scale = 2.4;
       baseHp = 15000;
@@ -1551,7 +1558,7 @@ export class GameEngine {
     this.player.kills++;
     if (!m.isBoss && (m.isElite || Math.random() < 0.018)) {
       const slot = Math.random() < .5 ? 'weapon' : 'armor';
-      const rank = Math.min(4, 1 + Math.floor(this.clock / 330) + (m.typeId === 'elite_milestone' ? 1 : 0));
+      const rank = Math.min(4, 1 + Math.floor(this.clock / 165) + (m.typeId === 'elite_milestone' ? 1 : 0));
       this.drops.push({id: this.nextEntityId++, type: 'gear', slot, value: rank, x: m.x, y: m.y});
     }
     sound.play('monster_die', 0.3);
@@ -1725,15 +1732,16 @@ export class GameEngine {
     for (const act of this.activeSkills) {
       const def = WOOWL_SKILLS[act.id];
       if (def && act.level < def.maxLevel) {
+        if (act.level === 4 && this.clock < AWAKENING_TIME) continue;
         const nextUpgrade = def.upgrades.find(u => u.level === act.level + 1);
-        const w = getQualityWeight(def.quality, playerLvl) * 1.35;
+        const w = getQualityWeight(def.quality, playerLvl) * (act.level===4 ? 2.7 : 1.35);
         choices.push({
           item: {
             type: 'skill',
             id: act.id,
             isNew: false,
             level: act.level + 1,
-            title: choiceTitle(def.name, act.level + 1, false),
+            title: act.level+1===5 ? def.name+' · 觉醒「'+nextUpgrade?.title+'」' : choiceTitle(def.name,act.level+1,false),
             description: nextUpgrade?.description ?? def.desc,
             iconId: def.iconId,
             quality: def.quality

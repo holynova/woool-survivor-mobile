@@ -10,9 +10,9 @@ import { journalKey, readJournal, writeJournal, finishRun, train, type Journal, 
 import type {HeroClass,DifficultyCurveId} from './types';
 
 const roles=[
-  {id:'warrior',name:'战士',skill:skills.attack_slash.name},
-  {id:'wizard',name:'法师',skill:skills.fireball.name},
-  {id:'taoist',name:'道士',skill:skills.soul_talisman.name+' · 骷髅'}
+  {id:'warrior',name:'战士',skill:skills.attack_slash.name, awakening:skills.attack_slash.upgrades[4].title},
+  {id:'wizard',name:'法师',skill:skills.fireball.name, awakening:skills.fireball.upgrades[4].title},
+  {id:'taoist',name:'道士',skill:skills.soul_talisman.name+' · 骷髅', awakening:skills.soul_talisman.upgrades[4].title}
 ] as const;
 function meter(value:number,max:number){return Math.max(0,Math.min(100,value/max*100))+'%'}
 function pause(){
@@ -67,7 +67,7 @@ export function App(){
     void sound.init(saved?.heroClass ?? role);
     if(saved){
       game.restore(saved);setRole(saved.heroClass);setChapter(saved.chapterId);setDifficulty(saved.difficultyId);
-      sound.playBgm(saved.bossSpawned?'boss':'battle');
+      sound.playBgm(saved.bossSpawned?'boss':'battle',saved.chapterId);
     }else {
       setChapter(nextChapter);
       game.start(role,nextChapter,difficulty,journalRef.current.training);
@@ -117,14 +117,14 @@ export function App(){
   const retire=()=>{persist(finishRun(journalRef.current,game,'retired'));lobby()};
   return <main>
     {storageError&&<div role="status" className="storage-error">存档失败，请保留此页。</div>}
-    {inLobby&&<section className="home" style={{backgroundImage:'linear-gradient(180deg,#12141316 12%,#11150fe6 61%,#0f120fff 91%),url('+map.bgImage+')'}}>
+    {inLobby&&<section className="home" onClickCapture={()=>{if(progress===null)sound.playBgm('menu')}} style={{backgroundImage:'linear-gradient(180deg,#12141316 12%,#11150fe6 61%,#0f120fff 91%),url('+map.bgImage+')'}}>
       <header className="mast"><span>传 世</span><nav><button disabled={progress!==null} onClick={()=>setSheet('records')}>战绩</button><button disabled={progress!==null} onClick={()=>setSheet('training')}>修行</button><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></nav></header>
       <div className="home-body">
         <h1>传奇世界<span>幸存者</span></h1>
         <button className="map-choice" onClick={()=>setSheet('maps')} disabled={progress!==null}><small>出征地图</small><strong>{map.name.split(' · ')[0]}</strong><span>换图 ›</span></button>
         <div className="roles">{roles.map((r,i)=><button key={r.id} aria-pressed={r.id===role} disabled={progress!==null} onClick={()=>setRole(r.id)}>
           <img src={media('ui','head_'+(i+1))} alt=""/><span>{r.name}</span></button>)}</div>
-        <div className="brief"><span>起手 · {hero.skill}</span><button onClick={()=>setSheet('curves')} disabled={progress!==null}>{curves[difficulty].name} ›</button></div>
+        <div className="brief"><span>{hero.skill} · 五级{hero.awakening}</span><button onClick={()=>setSheet('curves')} disabled={progress!==null}>{curves[difficulty].name} ›</button></div>
         {error?<button className="primary" onClick={lobby}>加载失败 · 返回重试</button>:progress===null?<><button className="primary" onClick={()=>journal.saved?setSheet('new'):void start()}>出 战</button>
         {journal.saved&&<button className="resume" onClick={()=>void start(journal.saved!)}>继续上局 · {chapters[journal.saved.chapterId].name.split(' · ')[0]} {time(journal.saved.clock)} ›</button>}</>:<div className="load">准备战场 · {progress}%<progress max="100" value={progress}/></div>}
       </div>
@@ -151,7 +151,7 @@ export function App(){
         <div className="xp"><span>Lv. {player.level}</span><div><i style={{width:meter(player.exp,player.maxExp)}}/></div><span>{player.kills} 斩</span></div>
       </footer>
       {game.phase!=='battle'&&<div className="veil"><section className="panel" role="dialog">
-        {game.phase==='level_up'?<><small>等级 {player.level}</small><Head title="选择修炼" close={()=>{field.current?.events.emit('clear-drag');game.phase='paused';game.emit()}}/>{game.upgradeChoices.map(c=><button className="row" key={c.id} onClick={()=>game.selectUpgrade(c)}><img src={media(c.type==='passive'&&passives[c.id]?.iconType==='item'||c.iconId>100000?'items':'skills',c.iconId)} alt=""/><span><b>{c.title}</b><small>{c.description}</small></span></button>)}</>:
+        {game.phase==='level_up'?<><small>等级 {player.level}</small><Head title="选择修炼" close={()=>{field.current?.events.emit('clear-drag');game.phase='paused';game.emit()}}/>{game.upgradeChoices.map(c=><button className={c.type==='skill' && c.level===5?'row awakening':'row'} key={c.id} onClick={()=>game.selectUpgrade(c)}><img src={media(c.type==='passive'&&passives[c.id]?.iconType==='item'||c.iconId>100000?'items':'skills',c.iconId)} alt=""/><span><b>{c.title}</b><small>{c.description}</small></span></button>)}</>:
         game.phase==='paused'?sheet==='loadout'?<><Head title="行囊与技能" close={closeSheet}/><Loadout changed={checkpoint}/></>:
         sheet==='retire'?<><Head title="撤离战场" close={closeSheet}/><p>本局将结束，{player.gold} 金收入库银。</p><button className="primary" onClick={retire}>结算并撤离</button></>:
         <><small>{map.name} · {game.wavePhaseName}</small><Head title="战斗暂停" close={resume}/>

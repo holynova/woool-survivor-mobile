@@ -12,13 +12,13 @@ const shapes = {
   rock_boulder: [83, 34, 22, .84], stone_lantern: [51, 17, 11, .92],
   dead_tree: [153, 23, 13, .9], stele: [98, 34, 19, .87], stump: [124, 36, 18, .88],
   reeds: [61, 10, 6, .93], snow_fir: [158, 20, 12, .93], ice_spires: [108, 34, 20, .87],
-  lava_spire: [120, 35, 20, .88], brazier: [84, 30, 17, .85]
+  gate_engine: [99, 31, 17, .91], lava_spire: [120, 35, 20, .88], brazier: [84, 30, 17, .85]
 } as const;
 export type PropKind = keyof typeof shapes;
 export interface TerrainProp extends Point {
   kind: PropKind; width: number; anchor: number; rx: number; ry: number; cos: number; sin: number; flip: boolean;
 }
-type Material = 'meadow' | 'paving' | 'sand' | 'mire' | 'snow' | 'basalt';
+type Material = 'meadow' | 'paving' | 'sand' | 'mire' | 'snow' | 'basalt' | 'village_path' | 'city_sand';
 interface Region {
   seed: number; base: Material; accent: Material; props: PropKind[];
   route: (x: number, y: number) => number; // Distance from an edge; negative is inside the second material.
@@ -26,15 +26,15 @@ interface Region {
 
 const regions: Record<string, Region> = {
   sunset_island: {
-    seed: 191, base:'meadow', accent:'sand', props:['tree_peach','tree_peach','tree_willow','rock_boulder','wood_fence','ancient_well'],
+    seed: 191, base:'meadow', accent:'village_path', props:['tree_peach','tree_peach','tree_willow','rock_boulder','wood_fence','ancient_well'],
     route:(x,y)=>Math.min(Math.abs(y-760-150*Math.sin(x/310))-52, Math.abs(x-730-(y-600)*.6)-33)
   },
   central_state: {
-    seed: 723, base:'meadow', accent:'paving', props:['ancient_pavilion','stone_lantern','wood_fence','tree_pine','ancient_well','stone_lantern'],
+    seed: 723, base:'meadow', accent:'paving', props:['ancient_pavilion','stone_lantern','wood_fence','tree_pine','ancient_well','gate_engine'],
     route:(x,y)=>Math.min(Math.abs(y-715+.34*(x-1280))-92,Math.abs(x-1250-.63*(y-720))-63)
   },
   hot_desert: {
-    seed: 1061, base:'sand', accent:'paving', props:['stele','rock_boulder','dead_tree','stele','dead_tree'],
+    seed: 1061, base:'sand', accent:'city_sand', props:['stele','rock_boulder','dead_tree','gate_engine','dead_tree'],
     route:(x,y)=>Math.abs(y-710-220*Math.sin(x/450)-60*Math.sin(x/157))-31
   },
   deadwater_marsh: {
@@ -52,8 +52,7 @@ const regions: Record<string, Region> = {
 };
 
 export function propUrl(kind: PropKind) {
-  const imported = ['dead_tree','stele','stump','reeds','snow_fir','ice_spires','lava_spire','brazier'].includes(kind);
-  return './assets/woool/' + (imported ? 'terrain/'+kind+'.webp' : 'maps/'+kind+'.png');
+  return './assets/woool/terrain/'+kind+'.webp';
 }
 
 const CELL = 160;

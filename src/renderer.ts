@@ -3,7 +3,7 @@ import {WOOWL_MONSTERS} from './config/curves';
 import {WOOWL_SKILLS} from './config/skills';
 import Phaser from 'phaser';
 import { game, calcDirection, WORLD_WIDTH, WORLD_HEIGHT } from './game';
-import type { EffectEvent, MonsterEntity, MinionEntity, DropEntity, DamageNumber } from './types';
+import type { EffectEvent, FlightKind, MonsterEntity, MinionEntity, DropEntity, DamageNumber } from './types';
 import { handAnchor } from './config/handAnchors';
 import { gearInfo, gearColors } from './config/equipment';
 import { assetUrl } from './utils';
@@ -252,6 +252,7 @@ export class BattleScene extends Phaser.Scene {
     this.syncDrops();
 
     // Consume and Render Skills & Effects (Evolving with Level 1 -> 4)
+    this.syncFlights();
     this.syncEffects(dt);
 
     // Sync UI (HP bars, Damage texts)
@@ -404,11 +405,12 @@ export class BattleScene extends Phaser.Scene {
         }
       }
 
+      const traveled=Math.hypot(sprite.x-m.x,sprite.y-m.y);
       sprite.setPosition(m.x, m.y);
       sprite.setDepth(m.y);
 
       const atlasKey = `m_${m.spriteKey || '20081'}`;
-      const { dirDigit, flipX } = getDirInfo(m.dir || 4);
+      const { dirDigit, flipX } = getDirInfo(m.dir ?? 4);
       sprite.setFlipX(flipX);
 
       // Scale & Imposing deterring aura
@@ -445,6 +447,8 @@ export class BattleScene extends Phaser.Scene {
         if (!sprite.anims.isPlaying || sprite.anims.currentAnim?.key !== animKey) {
           sprite.play(animKey);
         }
+        const dt=Math.max(.001,Math.min(this.game.loop.delta/1000,.08));
+        sprite.anims.timeScale=traveled<.05 ? 0 : Phaser.Math.Clamp(traveled/dt/(105*finalScale),.42,1.25);
       }
     }
 
@@ -599,78 +603,29 @@ export class BattleScene extends Phaser.Scene {
     fx.on('animationcomplete', () => fx.destroy());
   }
 
-  private spawnTalismanProjectile(startX: number, startY: number, targetX: number, targetY: number, level: number, curse: boolean) {
-    const texture = curse ? 'fx_3011' : 'fx_3002';
-    const flight = curse ? 'fx_curse_fly_anim' : 'fx_talisman_fly_anim';
-    const hit = curse ? 'fx_curse_hit_anim' : 'fx_talisman_hit_anim';
-    const sy = startY - 18;
-    const ty = targetY - 14;
-    const dist = Math.hypot(targetX - startX, ty - sy);
+  private missiles=new Map<number,Phaser.GameObjects.Sprite>();
+  private flightArt:Record<FlightKind,[string,string,string,number]>={
+    fireball:['fx_2001','fx_fireball_track_anim','fx_fireball_anim',.8],
+    shinsu_hit:['fx_2001','fx_fireball_track_anim','fx_fireball_anim',.55],
+    talisman:['fx_3002','fx_talisman_fly_anim','fx_talisman_hit_anim',1],
+    ghost_fire_curse:['fx_3011','fx_curse_fly_anim','fx_curse_hit_anim',1],
+    meteor:['fx_2202','fx_meteor_drop_anim','fx_meteor_boom_anim',1.2]
+  };
 
-    const scaleMult = level === 4 ? 1.6 : (level >= 2 ? 1.25 : 0.95);
-
-    if (this.anims.exists(flight) && dist > 28) {
-      const proj = this.trackSprite(this.add.sprite(startX, sy, texture));
-      proj.setOrigin(0.5, 0.5);
-      proj.setScale(scaleMult);
-      proj.setDepth(Math.max(startY, targetY) + 40);
-      proj.setRotation(Math.atan2(ty - sy, targetX - startX));
-      proj.setBlendMode(Phaser.BlendModes.NORMAL);
-      proj.play(flight);
-
-      const duration = Math.max(220, Math.min(400, Math.round(dist * 1.1)));
-      this.trackTween({
-        targets: proj,
-        x: targetX,
-        y: ty,
-        duration,
-        ease: 'Linear',
-        onComplete: () => {
-          proj.destroy();
-          this.spawnSkillEffect(targetX, targetY + 4, texture, hit, targetY + 25, scaleMult * 1.05);
-        }
-      });
-    } else {
-      this.spawnSkillEffect(targetX, targetY + 4, texture, hit, targetY + 25, scaleMult * 1.05);
+  private syncFlights() {
+    const visible=new Set<number>();
+    for(const shot of game.flights){
+      if(game.clock<shot.launchAt)continue;
+      visible.add(shot.id);
+      const [texture,animation,,scale]=this.flightArt[shot.kind];
+      let sprite=this.missiles.get(shot.id);
+      if(!sprite){
+        sprite=this.add.sprite(shot.x,shot.y,texture).setDepth(2000).setScale(scale*(1+.1*(shot.level-1)));
+        sprite.play(animation);this.missiles.set(shot.id,sprite);
+      }
+      sprite.setPosition(shot.x,shot.y-12).setRotation(Math.atan2(shot.targetY-shot.y,shot.targetX-shot.x));
     }
-  }
-
-  private spawnMeteorProjectile(x: number, y: number, staggerIndex = 0, level = 1) {
-    const startY = y - 360;
-    const endY = y;
-    const delay = staggerIndex * 135;
-
-    const scaleMult = level === 4 ? 2.2 : (level === 3 ? 1.65 : (level === 2 ? 1.3 : 1.0));
-
-    this.scheduleFx(delay, () => {
-      if (level >= 4) {
-        this.cameras.main.shake(200, 0.007);
-      }
-      if (this.anims.exists('fx_meteor_drop_anim')) {
-        const drop = this.trackSprite(this.add.sprite(x, startY, 'fx_2202'));
-        drop.setOrigin(0.5, 0.5);
-        drop.setScale(scaleMult);
-        drop.setRotation(Math.PI / 2);
-        drop.setDepth(y + 30);
-        drop.setBlendMode(Phaser.BlendModes.NORMAL);
-        drop.play('fx_meteor_drop_anim');
-
-        this.trackTween({
-          targets: drop,
-          x,
-          y: endY,
-          duration: 120,
-          ease: 'Quad.easeIn',
-          onComplete: () => {
-            drop.destroy();
-            this.spawnSkillEffect(x, endY, 'fx_2202', 'fx_meteor_boom_anim', y + 35, scaleMult * 0.95);
-            this.spawnSkillEffect(x, y - 16, 'fx_2011', 'fx_meteor_cast_anim', y + 42, scaleMult * 0.7);
-          }
-        });
-      } else {
-        this.spawnSkillEffect(x, y - 16, 'fx_2011', 'fx_meteor_cast_anim', y + 42, scaleMult * 0.7);
-      }
-    });
+    for(const [id,sprite] of this.missiles)if(!visible.has(id)){sprite.destroy();this.missiles.delete(id);}
   }
 
   private spawnDashEffect(startX: number, startY: number, targetX: number, targetY: number, dir: number, level = 1) {
@@ -751,11 +706,11 @@ export class BattleScene extends Phaser.Scene {
 
     const newEffects = game.takeEffects();
     const castPlayedThisTick = new Set<string>();
-    let meteorIndex = 0;
+
 
     for (const e of newEffects) {
       const lvl = e.level || 1;
-      const levelMult = lvl === 4 ? 2.15 : (lvl === 3 ? 1.65 : (lvl === 2 ? 1.3 : 1.0));
+      const levelMult = lvl >= 4 ? 2.15 : (lvl === 3 ? 1.65 : (lvl === 2 ? 1.3 : 1.0));
 
       if (e.type === 'lion_roar' && e.radius) {
         if (!this.textures.exists('roar_wave')) {
@@ -785,16 +740,15 @@ export class BattleScene extends Phaser.Scene {
         continue;
       }
 
-      if ((e.type === 'fireball' || e.type === 'shinsu_hit') && e.targetX!==undefined && e.targetY!==undefined) {
-        if (this.fxSprites.size >= 42) continue;
-        const angle = Math.atan2(e.targetY - e.y, e.targetX - e.x);
-        const bolt=this.trackSprite(this.add.sprite(e.x,e.y-12,'fx_2001').setDepth(2000));
-        bolt.setRotation(angle).setScale(e.type === 'shinsu_hit' ? .55 : .8);
-        bolt.play('fx_fireball_track_anim');
-        this.trackTween({targets:bolt,x:e.targetX,y:e.targetY-12,duration:160,onComplete:()=>{
-          this.spawnSkillEffect(bolt.x,bolt.y,'fx_2001','fx_fireball_anim',2000,.8+lvl*.12);
-          bolt.destroy();
-        }});
+      if(e.type in this.flightArt) {
+        const [texture,,impact,scale]=this.flightArt[e.type as FlightKind];
+        if(e.impact) {
+          this.spawnSkillEffect(e.x,e.y-12,texture,impact,2000,scale*(1+.15*(lvl-1)));
+          if(e.type==='meteor')this.spawnSkillEffect(e.x,e.y-16,'fx_2011','fx_meteor_cast_anim',2001,.85);
+        } else if(e.type==='talisman' && !castPlayedThisTick.has('talisman')) {
+          castPlayedThisTick.add('talisman');
+          this.spawnSkillEffect(e.x,e.y+16,'fx_3002','fx_talisman_cast_anim',e.y-1,.85*levelMult);
+        }
         continue;
       }
 
@@ -820,29 +774,6 @@ export class BattleScene extends Phaser.Scene {
           this.playerSprite.y + 15,
           0.85 * levelMult
         );
-      }
-
-      if (e.type === 'talisman' || e.type === 'ghost_fire_curse') {
-        if (e.type === 'talisman' && !castPlayedThisTick.has('talisman')) {
-          castPlayedThisTick.add('talisman');
-          this.spawnSkillEffect(
-            this.playerSprite.x,
-            this.playerSprite.y + 16,
-            'fx_3002',
-            'fx_talisman_cast_anim',
-            this.playerSprite.y - 1,
-            0.85 * levelMult
-          );
-        }
-        if (e.targetX !== undefined && e.targetY !== undefined) {
-          this.spawnTalismanProjectile(e.x, e.y, e.targetX, e.targetY, lvl, e.type === 'ghost_fire_curse');
-        }
-        continue;
-      }
-
-      if (e.type === 'meteor') {
-        this.spawnMeteorProjectile(e.x, e.y, meteorIndex++, lvl);
-        continue;
       }
 
       if (e.type === 'dash') {

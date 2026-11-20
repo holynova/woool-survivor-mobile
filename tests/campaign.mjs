@@ -62,6 +62,10 @@ try {
     shinsu_summon:[3007,'shinsu'], enhanced_skeleton:[3012,'enhanced_skeleton'], lion_roar:[3303,'lion_roar']
   };
   assert.deepEqual(Object.keys(skills).sort(), Object.keys(visuals).sort());
+  for (const def of Object.values(skills)) {
+    assert.equal(def.maxLevel, 5);
+    assert.deepEqual(def.upgrades.map(u => u.level), [1,2,3,4,5]);
+  }
   setSeed(123);
   for(const def of Object.values(skills))for(let level=1;level<=def.maxLevel;level++){
     const g=new GameEngine();g.start(def.classType,'sunset_island','standard');
@@ -80,6 +84,59 @@ try {
       const breath=g.takeEffects().find(e=>e.type==='shinsu_hit');
       assert.ok(breath && breath.x===m.x && breath.targetX===g.monsters[0].x);
     }
+  }
+  // Keep moving projectiles intact across a checkpoint, up to the single damage event.
+  {
+    let g=new GameEngine(); g.start('wizard','sunset_island','standard');
+    const target=g.monsters[0];
+    Object.assign(target,{x:g.player.x+300,y:g.player.y,hp:5000,maxHp:5000});
+    g.monsters=[target];
+    assert.ok(g.triggerSkill('fireball',1,skills.fireball));
+    const advance=() => {g.clock+=.1; g.updateFlights(.1);};
+    for(let i=0;i<3;i++) advance();
+    const checkpoint=structuredClone(g.snapshot());
+    g=new GameEngine(); g.restore(checkpoint); g.phase='battle';
+    assert.deepEqual(g.flights,checkpoint.flights);
+    for(let i=0;i<4;i++) advance();
+    assert.equal(g.monsters[0].hp,5000);
+    advance();
+    assert.equal(g.flights.length,0);
+    const hp=g.monsters[0].hp;
+    assert.ok(hp<5000);
+    advance();
+    assert.equal(g.monsters[0].hp,hp);
+    assert.equal(g.takeEffects().filter(e=>e.impact).length,1);
+  }
+  for(const level of [4,5]){
+    for(const id of ['hellfire','attack_slash','summon_skeleton','heal_spell','shinsu_summon']){
+      const g=new GameEngine(); g.start(skills[id].classType,'sunset_island','standard');
+      const front=g.monsters[0],back={...front,id:97000};
+      Object.assign(front,{x:g.player.x+32,y:g.player.y,hp:5000});
+      Object.assign(back,{x:g.player.x-70,y:g.player.y,hp:5000});
+      g.monsters=[front,back]; g.minions=[]; g.player.invulnerableTime=0;
+      g.activeSkills=[{id,level,cdTimer:0}];
+      const cast=()=>g.triggerSkill(id,level,skills[id]);
+      assert.ok(cast());
+      if(id==='hellfire'||id==='attack_slash') assert.equal(back.hp<5000,level===5,id);
+      if(id==='summon_skeleton'){cast();cast();cast();assert.equal(g.minions.length,level===5?3:2);}
+      if(id==='heal_spell')assert.equal(g.player.invulnerableTime,level===5?1:0);
+      if(id==='shinsu_summon'){
+        g.monsters=[front];
+        Object.assign(g.minions[0],{x:front.x-145,y:front.y,attackCd:0});
+        g.updateMinions(.01);
+        assert.equal(g.flights.some(f=>f.kind==='shinsu_hit'),level===5);
+      }
+    }
+  }
+  for(const id of Object.keys(chapters)) for(const difficulty of ['casual','standard','surge','hell']){
+    const g=new GameEngine();g.start('warrior',id,difficulty);
+    for(const mark of [150,300,450]){
+      g.clock=mark-.01;g.updateMonsterSpawns(0);assert.ok(!g.spawnedMilestones.has(mark));
+      g.clock=mark;g.updateMonsterSpawns(0);assert.ok(g.spawnedMilestones.has(mark));
+    }
+    g.clock=599.99;g.updateMonsterSpawns(0);assert.equal(g.bossSpawned,false);
+    g.clock=600;g.updateMonsterSpawns(0);g.updateMonsterSpawns(0);
+    assert.equal(g.monsters.filter(m=>m.isBoss).length,1,id+' '+difficulty);
   }
   // Pickups, spending and a pending upgrade must survive a reload without duplicating rewards.
   const trial=new GameEngine();trial.start('wizard','sunset_island','standard');
@@ -117,7 +174,7 @@ try {
   for(const [i,id] of ids.entries()){
     setSeed(125+i);
     let g=new GameEngine();g.start(roles[i%3],id,'standard');
-    let restored=false, milestone=0, sawBoss=false, peak=0;
+    let restored=false, milestone=0, sawBoss=false, peak=0, firstAwakening=null;
     for(let step=0;step<20000;step++){
       if(g.phase==='level_up')choose(g);
       if(g.phase!=='battle')break;
@@ -133,14 +190,17 @@ try {
         restored=true;
       }
       peak=Math.max(peak,g.monsters.length);milestone=Math.max(milestone,g.snapshot().milestones.length);
+      if(g.bossSpawned && !sawBoss) assert.ok(Math.abs(g.clock-600)<.11);
       sawBoss ||= g.bossSpawned;
+      if(firstAwakening===null && g.activeSkills.some(s=>s.level===5)) firstAwakening=g.clock;
     }
-    console.log(id,g.heroClass,g.phase,Math.round(g.clock)+'s','Lv'+g.player.level,'kills='+g.player.kills,'peak='+peak,'gold='+g.player.gold);
+    console.log(id,g.heroClass,g.phase,Math.round(g.clock)+'s','Lv'+g.player.level,'kills='+g.player.kills,'peak='+peak,'gold='+g.player.gold,'firstAwakening='+Math.round(firstAwakening)+'s');
+    assert.ok(firstAwakening>=150 && firstAwakening<600,id+' reachable awakening');
     results.push({id,phase:g.phase,restored,milestone,sawBoss});
     j=finishRun(j,g,g.phase);assert.equal(finishRun(j,g,g.phase),j);
   }
   for(const r of results){assert.equal(r.phase,'victory',r.id);assert.ok(r.restored && r.milestone===3 && r.sawBoss,r.id);}
   assert.equal(j.cleared.length,6);
   const trained=train(j,'might');assert.equal(trained.training.might,1);assert.equal(trained.bank,j.bank-360);
-  console.log('Six complete standard runs, 23 skills × four ranks, checkpoints and settlement verified.');
+  console.log('Six complete standard runs, 23 skills × five ranks, checkpoints and settlement verified.');
 } finally {Math.random=random;await server.close()}

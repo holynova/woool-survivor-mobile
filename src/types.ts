@@ -147,7 +147,14 @@ export interface DamageNumber {
   life: number;
 }
 
+export type FlightKind = 'fireball' | 'talisman' | 'ghost_fire_curse' | 'meteor' | 'shinsu_hit';
+export interface Flight {
+  id:number; kind:FlightKind; x:number; y:number; targetX:number; targetY:number;
+  targetId?:number; damage:number; level:number; radius:number; launchAt:number;
+}
+
 export interface EffectEvent {
+  impact?:boolean;
   id: number;
   type:
     | 'lightning'

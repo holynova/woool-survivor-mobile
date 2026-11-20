@@ -4,6 +4,9 @@ import type {
   MonsterArchetype
 } from '../types';
 
+export const ELITE_MILESTONES = [150, 300, 450] as const;
+export const AWAKENING_TIME = ELITE_MILESTONES[0];
+
 export const WOOWL_MONSTERS: Record<string, MonsterArchetype> = {
   scarecrow: {
     id: 'scarecrow',
@@ -100,7 +103,7 @@ export const WOOWL_DIFFICULTY_CURVES: Record<DifficultyCurveId, DifficultyCurveD
     expMult: 1.35,
     cdMult: 0.84,
     eliteInterval: 30,
-    bossTimeScale: 0.90,
+    bossTimeScale: 1,
     bossHpMult: 0.85,
     bossDmgMult: 0.75
   },
@@ -140,7 +143,7 @@ export const WOOWL_DIFFICULTY_CURVES: Record<DifficultyCurveId, DifficultyCurveD
     id: 'hell',
     name: '铁血炼狱',
     badge: '硬核挑战',
-    summary: '怪物血厚攻高，首领提前出现。',
+    summary: '怪物血厚攻高，精英成群。',
     hpMult: 1.65,
     dmgMult: 1.60,
     speedMult: 1.28,
@@ -148,7 +151,7 @@ export const WOOWL_DIFFICULTY_CURVES: Record<DifficultyCurveId, DifficultyCurveD
     expMult: 1.15,
     cdMult: 0.98,
     eliteInterval: 16,
-    bossTimeScale: 0.95,
+    bossTimeScale: 1,
     bossHpMult: 1.95,
     bossDmgMult: 1.65
   }

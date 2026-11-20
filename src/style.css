@@ -7,3 +7,5 @@
 #world,main{-webkit-user-select:none;user-select:none}button{-webkit-tap-highlight-color:transparent}
 
 .source-link { color: #dbc397; text-underline-offset: 3px; }
+
+.row.awakening{border-color:#c39a56;background:#392f20}.awakening b{color:#ffe0a4}
