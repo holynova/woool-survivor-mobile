@@ -128,14 +128,26 @@ try {
       }
     }
   }
+  const {WOOWL_MONSTERS:species}=await server.ssrLoadModule('/src/config/curves.ts');
+  const openingSpecies=Object.values(chapters).flatMap(c=>c.opening);
+  assert.equal(new Set(openingSpecies).size,openingSpecies.length,'distinct regional openers');
   for(const id of Object.keys(chapters)) for(const difficulty of ['casual','standard','surge','hell']){
     const g=new GameEngine();g.start('warrior',id,difficulty);
+    const chapter=chapters[id], local=new Set(chapter.monsterPool.map(m=>m.typeId));
+    assert.deepEqual(g.monsters.map(m=>m.typeId),[...chapter.opening,chapter.opening[0]]);
+    for(const progress of [.04,.09,.18,.65,.95]) for(let i=0;i<24;i++){
+      const type=g.pickMonsterFromPool(progress);
+      assert.ok(local.has(type) && (progress>=.1 || chapter.opening.includes(type)),id+' regional spawn');
+    }
     for(const mark of [150,300,450]){
       g.clock=mark-.01;g.updateMonsterSpawns(0);assert.ok(!g.spawnedMilestones.has(mark));
       g.clock=mark;g.updateMonsterSpawns(0);assert.ok(g.spawnedMilestones.has(mark));
+      const lord=g.monsters.filter(m=>m.typeId==='elite_milestone').at(-1);
+      assert.equal(lord.spriteKey,species[chapter.lordTypes[mark/150-1]].spriteKey);
     }
     g.clock=599.99;g.updateMonsterSpawns(0);assert.equal(g.bossSpawned,false);
     g.clock=600;g.updateMonsterSpawns(0);g.updateMonsterSpawns(0);
+    assert.equal(g.getActiveBoss().spriteKey,chapter.bossSpriteKey);
     assert.equal(g.monsters.filter(m=>m.isBoss).length,1,id+' '+difficulty);
   }
   // Pickups, spending and a pending upgrade must survive a reload without duplicating rewards.
@@ -200,7 +212,7 @@ try {
     j=finishRun(j,g,g.phase);assert.equal(finishRun(j,g,g.phase),j);
   }
   for(const r of results){assert.equal(r.phase,'victory',r.id);assert.ok(r.restored && r.milestone===3 && r.sawBoss,r.id);}
-  assert.equal(j.cleared.length,6);
+  assert.equal(j.cleared.length,ids.length);
   const trained=train(j,'might');assert.equal(trained.training.might,1);assert.equal(trained.bank,j.bank-360);
-  console.log('Six complete standard runs, 23 skills × five ranks, checkpoints and settlement verified.');
+  console.log('All chapters on standard, 23 skills × five ranks, checkpoints and settlement verified.');
 } finally {Math.random=random;await server.close()}

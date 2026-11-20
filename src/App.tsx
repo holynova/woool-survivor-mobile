@@ -4,7 +4,7 @@ import {game} from './game';
 import {Codex} from './Codex';
 import {WOOWL_CHAPTERS as chapters} from './config/chapters';
 import {WOOWL_SKILLS as skills,WOOWL_PASSIVES as passives} from './config/skills';
-import {WOOWL_DIFFICULTY_CURVES as curves} from './config/curves';
+import {WOOWL_DIFFICULTY_CURVES as curves, WOOWL_MONSTERS as monsters} from './config/curves';
 import {sound} from './audio';
 import { Head, Loadout, Records, TrainingPanel, time, media } from './CampaignPanels';
 import { journalKey, readJournal, writeJournal, finishRun, train, type Journal, type Checkpoint } from './journal';
@@ -60,7 +60,7 @@ export function App(){
   function lobby(){
     live.current=false;stopField();setSheet(null);setProgress(null);setError(false);game.resetForLobby();
   }
-  async function start(saved?:Checkpoint, nextChapter=chapter){
+  async function start(saved?:Checkpoint, nextChapter=chapter, settled?:Journal){
     if(loading.current)return;
     loading.current=true;
     const token=++generation.current;
@@ -81,6 +81,7 @@ export function App(){
       field.current=bootField(v=>{if(token===generation.current)setProgress(Math.round(v*100))},()=>{
         if(token!==generation.current||failed)return;
         setProgress(null);loading.current=false;live.current=true;
+        if(settled)journalRef.current=settled;
         checkpoint();
         if(document.hidden)pause();
       },()=>{failed=true;fail()});
@@ -122,26 +123,31 @@ export function App(){
       <header className="mast"><span>传 世</span><nav><button disabled={progress!==null} onClick={()=>setSheet('codex')}>图鉴</button><button disabled={progress!==null} onClick={()=>setSheet('records')}>战绩</button><button disabled={progress!==null} onClick={()=>setSheet('training')}>修行</button><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></nav></header>
       <div className="home-body">
         <h1>传奇世界<span>幸存者</span></h1>
-        <button className="map-choice" onClick={()=>setSheet('maps')} disabled={progress!==null}><small>出征地图</small><strong>{map.name.split(' · ')[0]}</strong><span>换图 ›</span></button>
         <div className="roles">{roles.map((r,i)=><button key={r.id} aria-pressed={r.id===role} disabled={progress!==null} onClick={()=>setRole(r.id)}>
           <img src={media('ui','head_'+(i+1))} alt=""/><span>{r.name}</span></button>)}</div>
         <div className="brief"><span>{hero.skill} · 五级{hero.awakening}</span><button onClick={()=>setSheet('curves')} disabled={progress!==null}>{curves[difficulty].name} ›</button></div>
-        {error?<button className="primary" onClick={lobby}>加载失败 · 返回重试</button>:progress===null?<><button className="primary" onClick={()=>journal.saved?setSheet('new'):void start()}>出 战</button>
+        {error?<button className="primary" onClick={lobby}>加载失败 · 返回重试</button>:progress===null?<><button className="primary" onClick={()=>setSheet('maps')}>开始游戏</button>
         {journal.saved&&<button className="resume" onClick={()=>void start(journal.saved!)}>继续上局 · {chapters[journal.saved.chapterId].name.split(' · ')[0]} {time(journal.saved.clock)} ›</button>}</>:<div className="load">准备战场 · {progress}%<progress max="100" value={progress}/></div>}
       </div>
     </section>}
     {sheet==='codex' && <Codex role={inLobby?role:game.heroClass} close={closeSheet}/>}
     {(sheet==='maps'||sheet==='curves')&&<div className="veil"><section className="panel" role="dialog" aria-label={sheet==='maps'?'选择地图':'选择难度'}>
       <div className="panel-head"><h2>{sheet==='maps'?'选择地图':'选择难度'}</h2><button aria-label="关闭" onClick={closeSheet}>×</button></div>
-      {sheet==='maps'?Object.values(chapters).map(c=><button className="row" aria-pressed={chapter===c.id} key={c.id} onClick={()=>{setChapter(c.id);closeSheet()}}><img loading="lazy" src={c.bgImage.replace('/maps/','/maps/thumbs/')} alt=""/><span><b>{c.name}</b><small>{journal.cleared.includes(c.id)?'已通关 · ':''}{c.bossName}</small></span></button>):
+      {sheet==='maps'?Object.values(chapters).map(c=><button className="row chapter-row" aria-pressed={chapter===c.id} key={c.id} data-chapter={c.id}
+        onClick={()=>{setChapter(c.id);if(journal.saved)setSheet('new');else void start(undefined,c.id)}}>
+        <img loading="lazy" src={c.bgImage.replace('/maps/','/maps/thumbs/')} alt=""/>
+        <span><b>{c.name.split(' · ')[0]}</b><small>开场 · {c.opening.map(id=>monsters[id].name).join('、')}</small></span>
+        <span className="chapter-target"><small>{journal.cleared.includes(c.id)?'已通关':'首领'}</small>{c.bossName.split(' · ').at(-1)}</span>
+      </button>):
       Object.values(curves).map(c=><button className="row" aria-pressed={difficulty===c.id} key={c.id} onClick={()=>{setDifficulty(c.id);closeSheet()}}><span><b>{c.name}</b><small>{c.summary}</small></span></button>)}
     </section></div>}
     {(sheet==='records'||sheet==='training'||sheet==='new')&&<div className="veil"><section className="panel" role="dialog">
-      <Head title={{records:'出征战绩',training:'传世修行',new:'另启征程'}[sheet]} close={closeSheet}/>
+      <Head title={{records:'出征战绩',training:'传世修行',new:'另启征程'}[sheet]} close={sheet==='new'?()=>setSheet('maps'):closeSheet}/>
       {sheet==='records'?<Records journal={journal}/>:sheet==='training'?<TrainingPanel journal={journal} buy={id=>persist(train(journalRef.current,id))}/>:
-        <><p>结束上局并存入金币？</p><button className="primary" onClick={()=>{
-          if(journal.saved){game.restore(journal.saved);persist(finishRun(journalRef.current,game,'retired'))}
-          void start();
+        <><p>结算上局金币，前往{map.name.split(' · ')[0]}？</p><button className="primary" onClick={()=>{
+          if(!journal.saved)return;
+          game.restore(journal.saved);
+          void start(undefined,chapter,finishRun(journalRef.current,game,'retired'));
         }}>结算并出战</button></>}
     </section></div>}
     {!inLobby&&<>
@@ -162,11 +168,11 @@ export function App(){
           <button disabled={game.upgradeChoices.length>0} onClick={()=>setSheet('loadout')}>行囊与技能</button><button onClick={()=>setSheet('codex')}>图鉴</button><button onClick={leaveSaved}>存档回城</button>
           <button onClick={toggleSound}>{muted?'声音关':'声音开'}</button><button onClick={()=>setMonsterSound(sound.toggleMonsters())}>怪物音效{monsterSound?'开':'关'}</button>
           </div><button className="resume" onClick={()=>setSheet('retire')}>结束本局</button></>:
-        <><small>{map.name}</small><Head title={game.phase==='victory'?(allCleared?'六境平定':'守关成功'):'此战已尽'} close={lobby}/><p>存活 {time(game.clock)} · 击败 {player.kills} · 等级 {player.level}<br/>入库 {player.gold} 金 · 已通关 {journal.cleared.length}/6 章</p>
+        <><small>{map.name}</small><Head title={game.phase==='victory'?(allCleared?'全境平定':'守关成功'):'此战已尽'} close={lobby}/><p>存活 {time(game.clock)} · 击败 {player.kills} · 等级 {player.level}<br/>入库 {player.gold} 金 · 已通关 {journal.cleared.length}/{mapOrder.length} 章</p>
           <button className="primary" onClick={()=>{
-            stopField();live.current=false;
-            void start(undefined,game.phase==='victory' && nextMap ? nextMap : chapter)
-          }}>{game.phase==='victory' && nextMap?'继续 · '+chapters[nextMap].name.split(' · ')[0]:'再战本章'}</button><button className="resume" onClick={lobby}>返回大厅</button></>}
+            const suggested=game.phase==='victory' && nextMap ? nextMap : chapter;
+            lobby();setChapter(suggested);setSheet('maps');
+          }}>选择地图再战</button><button className="resume" onClick={lobby}>返回大厅</button></>}
       </section></div>}
     </>}
   </main>

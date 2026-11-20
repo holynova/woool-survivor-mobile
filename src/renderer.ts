@@ -86,6 +86,7 @@ export class BattleScene extends Phaser.Scene {
     this.load.on('progress', (value:number)=>this.game.events.emit('field-progress',value));
     this.load.on('loaderror', ()=>this.game.events.emit('field-error'));
     preloadField(this,game.terrain);
+    this.load.image('healing-potion',assetUrl('assets/woool/items/healing_potion.webp'));
     for(let tier=1;tier<=3;tier++) this.load.image('coin_'+tier, assetUrl('assets/woool/items/gold_coin_'+tier+'.png'));
     for (const slot of ['weapon','armor'] as const) {
       const icons = new Set([0,1].map(rank => gearInfo(game.heroClass,slot,rank).icon));
@@ -95,13 +96,9 @@ export class BattleScene extends Phaser.Scene {
     const hero=HERO_ATLAS_MAP[game.heroClass];
     atlas(hero,'assets/woool/heroes/r_'+hero.slice(5));
     const monsters = new Set(chapter.monsterPool.map(monster => WOOWL_MONSTERS[monster.typeId].spriteKey));
-    // Every chapter opens with a few deer and scarecrows and later spawns milestone elites.
-    monsters.add(WOOWL_MONSTERS.scarecrow.spriteKey);
-    monsters.add(WOOWL_MONSTERS.deer.spriteKey);
+    for (const monster of game.monsters) if (monster.spriteKey) monsters.add(monster.spriteKey);
     monsters.add(chapter.bossSpriteKey);
-    if(game.heroClass==='taoist') monsters.add('20081');
-    monsters.add('20082');
-    monsters.add('20085');
+    if (game.heroClass==='taoist') for (const summon of ['20081','20082','20085']) monsters.add(summon);
     for (const id of monsters) atlas('m_'+id,'assets/woool/monsters/m_'+id);
     atlas('level_up','assets/woool/effects/level_up');
     const effects=new Set(Object.values(WOOWL_SKILLS).filter(s=>s.classType===game.heroClass).map(s=>s.iconId));
@@ -411,7 +408,8 @@ export class BattleScene extends Phaser.Scene {
 
       const atlasKey = `m_${m.spriteKey || '20081'}`;
       const { dirDigit, flipX } = getDirInfo(m.dir ?? 4);
-      sprite.setFlipX(flipX);
+      const singleView = !this.anims.exists(atlasKey+'_walk_0');
+      sprite.setFlipX(singleView ? (m.dir ?? 4) < 4 : flipX);
 
       // Scale & Imposing deterring aura
       const finalScale = m.scale || (m.isBoss ? 2.85 : (m.isElite ? 1.75 : 1.0));
@@ -442,7 +440,7 @@ export class BattleScene extends Phaser.Scene {
         sprite.clearTint();
       }
 
-      const animKey = `${atlasKey}_walk_${dirDigit}`;
+      const animKey = `${atlasKey}_walk_${singleView ? 3 : dirDigit}`;
       if (this.anims.exists(animKey)) {
         if (!sprite.anims.isPlaying || sprite.anims.currentAnim?.key !== animKey) {
           sprite.play(animKey);
@@ -503,10 +501,10 @@ export class BattleScene extends Phaser.Scene {
     const activeDropIds = new Set<number>();
 
     for (const d of game.drops) {
-      if (d.type !== 'potion' && this.cameras.main.worldView.contains(d.x,d.y)) {
+      if (this.cameras.main.worldView.contains(d.x,d.y)) {
         activeDropIds.add(d.id);
         let sprite = this.dropSprites.get(d.id);
-        const tex = d.type === 'gear' && d.slot ? 'gear_'+gearInfo(game.heroClass,d.slot,d.value).icon : d.tier === 3 ? 'coin_3' : (d.tier === 2 ? 'coin_2' : 'coin_1');
+        const tex = d.type === 'potion' ? 'healing-potion' : d.type === 'gear' && d.slot ? 'gear_'+gearInfo(game.heroClass,d.slot,d.value).icon : d.tier === 3 ? 'coin_3' : (d.tier === 2 ? 'coin_2' : 'coin_1');
 
         if (!sprite) {
           sprite = this.dropPool.pop() || this.add.sprite(d.x, d.y, tex);
@@ -518,7 +516,7 @@ export class BattleScene extends Phaser.Scene {
           sprite.setTexture(tex);
         }
 
-        sprite.setScale(d.type === 'gear' ? .62 : 1);
+        sprite.setScale(d.type === 'potion' ? .52 : d.type === 'gear' ? .62 : 1);
         sprite.setTint(d.type === 'gear' ? gearColors[d.value] : 0xffffff);
         const bob = Math.sin(game.clock * 4.5 + d.id) * 2.2;
         sprite.setPosition(d.x, d.y + bob);
@@ -848,7 +846,9 @@ export class BattleScene extends Phaser.Scene {
         const barW = m.isBoss ? 90 : (m.isElite ? 55 : 36);
         const barH = m.isBoss ? 7 : (m.isElite ? 5 : 4);
         const bx = m.x - barW / 2;
-        const by = m.y - (m.isBoss ? 85 : (m.isElite ? 62 : 45));
+        const sprite = this.monsterSprites.get(m.id);
+        if (!sprite) continue;
+        const by = m.y + (sprite.frame.y - sprite.displayOriginY) * sprite.scaleY - barH - 5;
 
         // Bar frame
         gfx.fillStyle(0x000000, 0.75);
@@ -863,18 +863,6 @@ export class BattleScene extends Phaser.Scene {
         const ratio = Math.max(0, m.hp / m.maxHp);
         gfx.fillStyle(m.isBoss ? 0xff0033 : (m.isElite ? 0xff9900 : 0xdd3333), 0.95);
         gfx.fillRect(bx, by, barW * ratio, barH);
-      }
-    }
-
-    // 3. Potion drops (red bottle)
-    for (const d of game.drops) {
-      if (d.type === 'potion') {
-        gfx.fillStyle(0xff2244, 0.95);
-        gfx.fillRect(d.x - 4, d.y - 6, 8, 12);
-        gfx.fillStyle(0xffffff, 0.85);
-        gfx.fillRect(d.x - 2, d.y - 4, 3, 3);
-        gfx.fillStyle(0xa66300, 1.0);
-        gfx.fillRect(d.x - 2, d.y - 8, 4, 2);
       }
     }
 
@@ -1029,8 +1017,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // 2. Monster Walking Animations
-    for (const id of ['20038', '20046', '20072', '20081', '20082', '20085', '20111', '20112']) {
-      const atlasKey = `m_${id}`;
+    for (const atlasKey of this.textures.getTextureKeys().filter(key => key.startsWith('m_'))) {
+      const id = atlasKey.slice(2);
       for (let dir = 0; dir <= 4; dir++) {
         this.createAnimFromAtlas(`${atlasKey}_walk_${dir}`, atlasKey, `${id}/walk/${dir}`, 8, -1);
         this.createAnimFromAtlas(`${atlasKey}_idle_${dir}`, atlasKey, `${id}/stand/${dir}`, 4, -1);

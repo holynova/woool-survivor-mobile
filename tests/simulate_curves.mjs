@@ -106,8 +106,8 @@ async function runSimulation() {
       throw new Error('Expected stationary AFK on Hell curve to result in game_over!');
     }
 
-    // 3. All 6 Chapters Playability Smoke Check
-    console.log('\n--- 3. All 6 Chapters Playability Check (Standard Curve) ---');
+    // 3. All Chapters Playability Smoke Check
+    console.log('\n--- 3. All Chapters Playability Check (Standard Curve) ---');
     for (const ch of allChapters) {
       const chapName = WOOWL_CHAPTERS[ch].name;
       const res = simulateRun({ heroClass: 'wizard', chapterId: ch, curveId: 'standard', kiting: true });

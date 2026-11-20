@@ -255,7 +255,7 @@ export class GameEngine {
 
     // Seed initial deliberate wanderers at distance to start the match smoothly
     for (let i = 0; i < 3; i++) {
-      this.spawnMonsterFromChapter(false, 220 + Math.random() * 75);
+      this.spawnMonsterFromChapter(false, 220 + Math.random() * 75, WOOWL_CHAPTERS[this.chapterId].opening[i%2]);
     }
 
     this.emit();
@@ -1270,26 +1270,12 @@ export class GameEngine {
 
   private pickMonsterFromPool(progress: number): string {
     const chap = WOOWL_CHAPTERS[this.chapterId] || WOOWL_CHAPTERS.sunset_island;
-    const weightedPool = chap.monsterPool.map(item => {
-      let w = item.weight;
-      if (progress < 0.15) {
-        if (item.typeId === 'shinsu_puppet' || item.typeId === 'enhanced_skeleton' || item.typeId === 'skeleton') {
-          w = Math.max(0, Math.round(w * 0.15));
-        } else if (item.typeId === 'wild_boar') {
-          w = Math.max(1, Math.round(w * 0.35));
-        }
-      } else if (progress < 0.45 && (item.typeId === 'shinsu_puppet' || item.typeId === 'enhanced_skeleton')) {
-        w = Math.max(1, Math.round(w * 0.35));
-      } else if (progress >= 0.70 && (item.typeId === 'shinsu_puppet' || item.typeId === 'enhanced_skeleton')) {
-        w = Math.round(w * 1.35);
-      }
-      return { typeId: item.typeId, weight: w };
-    });
-
-    if (progress < 0.15) {
-      weightedPool.push({ typeId: 'scarecrow', weight: Math.round(32 * (1 - progress / 0.15)) });
-      weightedPool.push({ typeId: 'deer', weight: Math.round(24 * (1 - progress / 0.15)) });
-    }
+    // The first minute belongs to the local opening pair; reinforcements then ramp in.
+    const reinforcement = Math.max(0, Math.min(1, (progress - .1) / .25));
+    const weightedPool = chap.monsterPool.map(item => ({
+      typeId:item.typeId,
+      weight:item.weight * (chap.opening.includes(item.typeId) ? 1 : reinforcement)
+    })).filter(item => item.weight > 0);
 
     const totalWeight = weightedPool.reduce((sum, item) => sum + item.weight, 0);
     let r = Math.random() * totalWeight;
@@ -1300,7 +1286,7 @@ export class GameEngine {
     return weightedPool[0]?.typeId || 'scarecrow';
   }
 
-  private spawnMonsterFromChapter(isElite = false, customDist?: number) {
+  private spawnMonsterFromChapter(isElite = false, customDist?: number, fixedType?: string) {
     const chap = WOOWL_CHAPTERS[this.chapterId] || WOOWL_CHAPTERS.sunset_island;
     const curve = WOOWL_DIFFICULTY_CURVES[this.difficultyId] || WOOWL_DIFFICULTY_CURVES.standard;
     const bossTime = this.getBossTriggerTime();
@@ -1315,9 +1301,7 @@ export class GameEngine {
     const x = edgeSafe(this.player.x, Math.cos(angle) * dist, WORLD_WIDTH);
     const y = Math.max(80, Math.min(WORLD_HEIGHT-80, edgeSafe(this.player.y, Math.sin(angle) * dist, WORLD_HEIGHT)));
 
-    const pickedType = isElite
-      ? (state.progress < 0.22 ? this.pickMonsterFromPool(state.progress) : (Math.random() < 0.5 ? 'enhanced_skeleton' : this.pickMonsterFromPool(state.progress)))
-      : this.pickMonsterFromPool(state.progress);
+    const pickedType = fixedType ?? this.pickMonsterFromPool(state.progress);
     const arch = WOOWL_MONSTERS[pickedType] || WOOWL_MONSTERS.scarecrow;
 
     const eliteHpMult = isElite ? 2.8 : 1.0;
@@ -1372,7 +1356,9 @@ export class GameEngine {
     const x = Math.max(120, Math.min(WORLD_WIDTH - 120, this.player.x + Math.cos(angle) * dist));
     const y = Math.max(120, Math.min(WORLD_HEIGHT - 120, this.player.y + Math.sin(angle) * dist));
 
-    const {name, spriteKey, scale, baseHp, baseDmg, exp, radius} = MILESTONE_LORDS[tier - 1];
+    const {scale, baseHp, baseDmg, exp, radius} = MILESTONE_LORDS[tier - 1];
+    const {name:species, spriteKey} = WOOWL_MONSTERS[chap.lordTypes[tier-1]];
+    const name = species+'领主';
 
     const hp = Math.round(baseHp * curve.hpMult * (1 + (chap.chapterDifficulty - 1) * 0.45));
     const dmg = Math.round(baseDmg * curve.dmgMult * (1 + (chap.chapterDifficulty - 1) * 0.35));

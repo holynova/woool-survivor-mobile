@@ -6,9 +6,9 @@ import type {
 
 export const ELITE_MILESTONES = [150, 300, 450] as const;
 export const MILESTONE_LORDS = [
-  {name:'【境霸·狂暴尸王将】', spriteKey:'20082', scale:1.95, baseHp:3600, baseDmg:32, exp:80, radius:48},
-  {name:'【境霸·赤炎魔战傀】', spriteKey:'20085', scale:2.2, baseHp:8200, baseDmg:42, exp:160, radius:56},
-  {name:'【境霸·通天修罗卫】', spriteKey:'20082', scale:2.4, baseHp:15000, baseDmg:52, exp:300, radius:64}
+  {scale:1.95, baseHp:3600, baseDmg:32, exp:80, radius:48},
+  {scale:2.2, baseHp:8200, baseDmg:42, exp:160, radius:56},
+  {scale:2.4, baseHp:15000, baseDmg:52, exp:300, radius:64}
 ] as const;
 export const AWAKENING_TIME = ELITE_MILESTONES[0];
 
@@ -92,7 +92,26 @@ export const WOOWL_MONSTERS: Record<string, MonsterArchetype> = {
     exp: 28,
     radius: 34,
     spriteKey: '20085'
-  }
+  },
+  field_spider: {id:'field_spider', name:'毒蜘蛛', spriteKey:'field_spider', hp:80, speed:112, damage:12, exp:4, radius:18},
+  staff_hound: {id:'staff_hound', name:'棍犬', spriteKey:'staff_hound', hp:93, speed:117, damage:15, exp:5, radius:23},
+  marsh_fisher: {id:'marsh_fisher', name:'鱼人', spriteKey:'marsh_fisher', hp:102, speed:106, damage:15, exp:5, radius:25},
+  marsh_toad: {id:'marsh_toad', name:'癞蛤蟆', spriteKey:'marsh_toad', hp:80, speed:93, damage:13, exp:4, radius:18},
+  sand_scorpion: {id:'sand_scorpion', name:'沙蝎', spriteKey:'sand_scorpion', hp:81, speed:107, damage:15, exp:5, radius:20},
+  sand_golem: {id:'sand_golem', name:'沙怪', spriteKey:'sand_golem', hp:275, speed:76, damage:24, exp:12, radius:30},
+  sand_vulture: {id:'sand_vulture', name:'沙雕', spriteKey:'sand_vulture', hp:128, speed:140, damage:19, exp:6, radius:22},
+  sand_wolf: {id:'sand_wolf', name:'土狼', spriteKey:'sand_wolf', hp:99, speed:128, damage:17, exp:5, radius:22},
+  pale_wraith: {id:'pale_wraith', name:'幽魂', spriteKey:'pale_wraith', hp:90, speed:100, damage:15, exp:5, radius:21},
+  shadow_warrior: {id:'shadow_warrior', name:'幽影武士', spriteKey:'shadow_warrior', hp:121, speed:108, damage:17, exp:5, radius:26},
+  cinder_imp: {id:'cinder_imp', name:'鬼方火卒', spriteKey:'cinder_imp', hp:75, speed:114, damage:15, exp:5, radius:19},
+  demon_axeman: {id:'demon_axeman', name:'猛魔刀斧手', spriteKey:'demon_axeman', hp:127, speed:108, damage:20, exp:6, radius:26},
+  inferno_demon: {id:'inferno_demon', name:'炎魔', spriteKey:'inferno_demon', hp:390, speed:85, damage:32, exp:16, radius:32},
+  red_serpent: {id:'red_serpent', name:'红蛇妖', spriteKey:'red_serpent', hp:96, speed:110, damage:16, exp:6, radius:23},
+  black_serpent: {id:'black_serpent', name:'黑蛇妖', spriteKey:'black_serpent', hp:245, speed:103, damage:23, exp:11, radius:27},
+  shell_beetle: {id:'shell_beetle', name:'魔甲虫', spriteKey:'shell_beetle', hp:82, speed:99, damage:15, exp:5, radius:20},
+  firebird: {id:'firebird', name:'火烈鸟', spriteKey:'firebird', hp:85, speed:117, damage:16, exp:5, radius:20},
+  soul_envoy: {id:'soul_envoy', name:'招魂使', spriteKey:'soul_envoy', hp:110, speed:94, damage:17, exp:6, radius:24},
+  flame_envoy: {id:'flame_envoy', name:'烈焰使', spriteKey:'flame_envoy', hp:280, speed:100, damage:26, exp:13, radius:28}
 };
 
 export const WOOWL_DIFFICULTY_CURVES: Record<DifficultyCurveId, DifficultyCurveDefinition> = {

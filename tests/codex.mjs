@@ -6,7 +6,7 @@ const server=await createServer({server:{middlewareMode:true,hmr:false},appType:
 try {
   const {WOOWL_SKILLS:skills}=await server.ssrLoadModule('/src/config/skills.ts');
   const {bestiary}=await server.ssrLoadModule('/src/config/bestiary.ts');
-  const {WOOWL_MONSTERS, MILESTONE_LORDS}=await server.ssrLoadModule('/src/config/curves.ts');
+  const {WOOWL_MONSTERS}=await server.ssrLoadModule('/src/config/curves.ts');
   const {WOOWL_CHAPTERS}=await server.ssrLoadModule('/src/config/chapters.ts');
   const clips=new Set();
   for(const skill of Object.values(skills)) clips.add('s-'+skill.iconId);
@@ -17,7 +17,7 @@ try {
     readFileSync('public/assets/woool/codex/portrait-'+monster.sprite+'.webp');
   }
   assert.equal(new Set(bestiary.map(m=>m.id)).size,bestiary.length);
-  assert.equal(bestiary.length,Object.keys(WOOWL_MONSTERS).length*2+MILESTONE_LORDS.length+Object.keys(WOOWL_CHAPTERS).length);
+  assert.equal(bestiary.length,Object.keys(WOOWL_MONSTERS).length*2+Object.values(WOOWL_CHAPTERS).reduce((n,c)=>n+c.lordTypes.length,0)+Object.keys(WOOWL_CHAPTERS).length);
   for(const clip of clips) {
     const path='public/assets/woool/codex/'+clip;
     const data=readFileSync(path+'.webp');

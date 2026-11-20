@@ -45,6 +45,14 @@ const regions: Record<string, Region> = {
     seed: 3769, base:'snow', accent:'paving', props:['snow_fir','ice_spires','snow_fir','ice_spires'],
     route:(x,y)=>Math.abs(y-690-.28*(x-1280)-100*Math.sin(x/235))-44
   },
+  serpent_valley: {
+    seed: 4261, base:'mire', accent:'basalt', props:['rock_boulder','stele','reeds','dead_tree','stump'],
+    route:(x,y)=>Math.abs(y-720-210*Math.sin(x/260))-82
+  },
+  heaven_tower: {
+    seed: 6217, base:'paving', accent:'basalt', props:['brazier','stele','stone_lantern','gate_engine','stele'],
+    route:(x,y)=>Math.min(Math.abs(Math.hypot((x-1280)*.73,y-720)-360)-60,Math.abs(x-1280)-65)
+  },
   iron_citadel: {
     seed: 7103, base:'basalt', accent:'paving', props:['lava_spire','brazier','stele','lava_spire'],
     route:(x,y)=>Math.min(Math.abs(y-810+.48*(x-1180))-64,Math.abs(x-1530-.3*(y-450))-46)

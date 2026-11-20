@@ -246,6 +246,8 @@ export interface ChapterDefinition {
   durationSeconds: number;
   description: string;
   ambientTheme: 'peach' | 'embers' | 'sand' | 'wisp' | 'frost' | 'lava';
+  opening: [string, string];
+  lordTypes: [string, string, string];
   monsterPool: {
     typeId: string;
     weight: number;

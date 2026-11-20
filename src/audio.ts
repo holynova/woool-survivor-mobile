@@ -18,7 +18,7 @@ class AudioManager {
   private currentBgmTrack:BgmTrack|null=null;
   private readonly chapterTracks: Record<string,string>={
     sunset_island:'HJLX',central_state:'HJZZ',hot_desert:'HJQGD',
-    deadwater_marsh:'HJSWY0-5',frozen_citadel:'HJJD',iron_citadel:'txmc'
+    deadwater_marsh:'HJSWY0-5',frozen_citadel:'HJJD',iron_citadel:'txmc',serpent_valley:'HJSWY0-5',heaven_tower:'HJQGD'
   };
 
   // SFX Throttling to prevent audio stuttering on multi-pickups

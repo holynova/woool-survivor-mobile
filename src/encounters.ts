@@ -23,6 +23,15 @@ export function attackZones(chapter: string, enemy: MonsterEntity, player: Playe
   }
   const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
   switch (chapter) {
+    case 'serpent_valley':
+      for (const offset of [-.58, 0, .58]) for (const distance of [85,170,255]) {
+        mark(enemy.x+distance*Math.cos(angle+offset),enemy.y+distance*Math.sin(angle+offset),53,.8+distance/460,0xab73be);
+      }
+      break;
+    case 'heaven_tower':
+      mark(enemy.x,enemy.y,118,.95,0xf39b4b);
+      mark(enemy.x,enemy.y,253,1.85,0xe66744,124);
+      break;
     case 'central_state':
       for (let i = 1; i <= 5; i++) mark(enemy.x + Math.cos(angle)*64*i, enemy.y + Math.sin(angle)*64*i, 49, .85+i*.09, 0xf2764c);
       break;

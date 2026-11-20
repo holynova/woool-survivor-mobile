@@ -35,6 +35,8 @@ def sequence(base, action, direction="0"):
         assert not spec["rotated"], name
         x, y, w, h = (box[k] for k in ("x", "y", "w", "h"))
         frames.append((pages[page].crop((x, y, x+w, y+h)), offset["x"], offset["y"]))
+    if not frames and base.startswith("monsters/") and (action,direction)!=("walk","3"):
+        return sequence(base,"walk","3")
     assert frames, (base, action, direction)
     return frames
 
@@ -136,9 +138,11 @@ def spell(skill):
 
 def monster(key):
     frames=[]
-    for i in range(12):
+    archived = not any('/attack/' in name for name in atlas('monsters/m_'+key)[1])
+    count = len(sequence('monsters/m_'+key,'walk','3')) if archived else 12
+    for i in range(count):
         scene=Image.new("RGBA",SIZE)
-        actor(scene,"monsters/m_"+key,"walk" if i<6 else "attack","3",i if i<6 else i-6,216,190,1.12)
+        actor(scene,"monsters/m_"+key,"walk" if archived or i<6 else "attack","3",i if archived or i<6 else i-6,216,190,1.12)
         frames.append(scene)
     export(frames,"m-"+key,1,145)
     portrait=frames[1].crop(frames[1].getbbox())

@@ -14,13 +14,15 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     targetKills: 600,
     durationSeconds: 600,
     ambientTheme: 'peach',
-    description: '传世勇士启航之海岛原野，桃花灼灼，碧波微漾。广袤绿茵旷野间，稻草人、角鹿与毒蟒自远方林野蜂拥合围！',
+    description: '桃林中的稻草人和角鹿先到，毒蜘蛛和野猪随后逼近。',
+    opening: ['scarecrow', 'deer'],
+    lordTypes: ['field_spider', 'wild_boar', 'blade_hound'],
     monsterPool: [
-      { typeId: 'scarecrow', weight: 35 },
-      { typeId: 'deer', weight: 25 },
-      { typeId: 'snake', weight: 25 },
-      { typeId: 'blade_hound', weight: 10 },
-      { typeId: 'skeleton', weight: 5 }
+      {typeId:'scarecrow', weight:30},
+      {typeId:'deer', weight:25},
+      {typeId:'field_spider', weight:23},
+      {typeId:'wild_boar', weight:17},
+      {typeId:'blade_hound', weight:12}
     ]
   },
   central_state: {
@@ -36,13 +38,15 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     targetKills: 800,
     durationSeconds: 600,
     ambientTheme: 'embers',
-    description: '中州皇城郊外的古代军道与广袤平原，视野开阔，红野猪、妖化刀犬与骷髅先锋潮水般直扑古战道！',
+    description: '棍犬与刀犬巡守城郊军道，骷髅援军随后出城。',
+    opening: ['staff_hound', 'blade_hound'],
+    lordTypes: ['staff_hound', 'skeleton', 'enhanced_skeleton'],
     monsterPool: [
-      { typeId: 'wild_boar', weight: 30 },
-      { typeId: 'blade_hound', weight: 25 },
-      { typeId: 'skeleton', weight: 25 },
-      { typeId: 'snake', weight: 10 },
-      { typeId: 'enhanced_skeleton', weight: 10 }
+      {typeId:'staff_hound', weight:30},
+      {typeId:'blade_hound', weight:25},
+      {typeId:'wild_boar', weight:23},
+      {typeId:'skeleton', weight:17},
+      {typeId:'enhanced_skeleton', weight:12}
     ]
   },
   hot_desert: {
@@ -58,13 +62,14 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     targetKills: 1000,
     durationSeconds: 600,
     ambientTheme: 'sand',
-    description: '大漠绝地中的辽阔戈壁与残破石刻古迹，广阔沙原一望无际，狂暴风沙中双斧骷髅将与赤炎兽傀儡全面苏醒！',
+    description: '沙蝎与土狼沿沙道合围，沙雕和沙怪从戈壁深处加入。',
+    opening: ['sand_scorpion', 'sand_wolf'],
+    lordTypes: ['sand_scorpion', 'sand_vulture', 'sand_golem'],
     monsterPool: [
-      { typeId: 'blade_hound', weight: 25 },
-      { typeId: 'skeleton', weight: 25 },
-      { typeId: 'wild_boar', weight: 20 },
-      { typeId: 'enhanced_skeleton', weight: 20 },
-      { typeId: 'shinsu_puppet', weight: 10 }
+      {typeId:'sand_scorpion', weight:30},
+      {typeId:'sand_wolf', weight:25},
+      {typeId:'sand_vulture', weight:23},
+      {typeId:'sand_golem', weight:17}
     ]
   },
   deadwater_marsh: {
@@ -80,13 +85,15 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     targetKills: 1200,
     durationSeconds: 600,
     ambientTheme: 'wisp',
-    description: '沉没于千年毒瘴的幽暗沼泽湿地，暗绿鬼火闪烁，毒蛇与亡灵骷髅大军踏过开阔木栈泥沼合围而来！',
+    description: '癞蛤蟆和鱼人盘踞沼地，毒蟒穿过泥径增援。',
+    opening: ['marsh_toad', 'marsh_fisher'],
+    lordTypes: ['marsh_toad', 'marsh_fisher', 'red_serpent'],
     monsterPool: [
-      { typeId: 'snake', weight: 35 },
-      { typeId: 'blade_hound', weight: 20 },
-      { typeId: 'skeleton', weight: 25 },
-      { typeId: 'enhanced_skeleton', weight: 15 },
-      { typeId: 'shinsu_puppet', weight: 5 }
+      {typeId:'marsh_toad', weight:30},
+      {typeId:'marsh_fisher', weight:25},
+      {typeId:'snake', weight:23},
+      {typeId:'field_spider', weight:17},
+      {typeId:'red_serpent', weight:12}
     ]
   },
   frozen_citadel: {
@@ -102,13 +109,15 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     targetKills: 1400,
     durationSeconds: 600,
     ambientTheme: 'frost',
-    description: '极北冰原的苍月辽阔雪地，积雪冰川与寒冰符石散落，重甲精锐兽傀儡与妖化兽群在茫茫冰原疯狂冲击！',
+    description: '幽魂和幽影武士穿行雪原，角鹿与骷髅从冰道赶来。',
+    opening: ['pale_wraith', 'shadow_warrior'],
+    lordTypes: ['pale_wraith', 'shadow_warrior', 'enhanced_skeleton'],
     monsterPool: [
-      { typeId: 'snake', weight: 15 },
-      { typeId: 'blade_hound', weight: 25 },
-      { typeId: 'wild_boar', weight: 25 },
-      { typeId: 'enhanced_skeleton', weight: 25 },
-      { typeId: 'shinsu_puppet', weight: 10 }
+      {typeId:'pale_wraith', weight:30},
+      {typeId:'shadow_warrior', weight:25},
+      {typeId:'deer', weight:23},
+      {typeId:'skeleton', weight:17},
+      {typeId:'enhanced_skeleton', weight:12}
     ]
   },
   iron_citadel: {
@@ -124,13 +133,43 @@ export const WOOWL_CHAPTERS: Record<string, ChapterDefinition> = {
     targetKills: 1600,
     durationSeconds: 600,
     ambientTheme: 'lava',
-    description: '终焉魔界深处的黑曜石熔岩开阔荒原，岩浆漫流、锁链横陈，唯有登峰造极的传世宗师方能在此迎战灭世魔君！',
+    description: '鬼方火卒和猛魔刀斧手守住熔岩路口，炎魔坐镇深处。',
+    opening: ['cinder_imp', 'demon_axeman'],
+    lordTypes: ['cinder_imp', 'demon_axeman', 'inferno_demon'],
     monsterPool: [
-      { typeId: 'blade_hound', weight: 30 },
-      { typeId: 'wild_boar', weight: 25 },
-      { typeId: 'skeleton', weight: 25 },
-      { typeId: 'enhanced_skeleton', weight: 15 },
-      { typeId: 'shinsu_puppet', weight: 5 }
+      {typeId:'cinder_imp', weight:30},
+      {typeId:'demon_axeman', weight:25},
+      {typeId:'shinsu_puppet', weight:23},
+      {typeId:'inferno_demon', weight:17},
+      {typeId:'shadow_warrior', weight:12}
+    ]
+  },
+  serpent_valley: {
+    id:'serpent_valley', name:'蛇魔谷 · 五蛇殿',subtitle:'五蛇殿',
+    bgImage:'./assets/woool/maps/serpent_valley.jpg',bossName:'三头蛇王',bossSpriteKey:'hydra_king',
+    bossHp:54000,bossDamage:77,chapterDifficulty:2.25,targetKills:1700,durationSeconds:600,
+    ambientTheme:'wisp',description:'穿过甲虫密布的岩径，迎战五蛇殿的三头蛇王。',
+    opening: ['shell_beetle', 'red_serpent'],
+    lordTypes: ['shell_beetle', 'red_serpent', 'black_serpent'],
+    monsterPool: [
+      {typeId:'shell_beetle', weight:30},
+      {typeId:'red_serpent', weight:25},
+      {typeId:'black_serpent', weight:23},
+      {typeId:'snake', weight:17},
+      {typeId:'marsh_fisher', weight:12}
+    ]
+  },
+  heaven_tower: {
+    id:'heaven_tower',name:'通天塔 · 九重云霄',subtitle:'九重云霄',
+    bgImage:'./assets/woool/maps/heaven_tower.jpg',bossName:'通天教主',bossSpriteKey:'sky_pontiff',
+    bossHp:58000,bossDamage:81,chapterDifficulty:2.35,targetKills:1800,durationSeconds:600,
+    ambientTheme:'embers',description:'穿过火烈鸟与两位使者的封锁，在九重云霄迎战通天教主。',
+    opening: ['firebird', 'soul_envoy'],
+    lordTypes: ['firebird', 'soul_envoy', 'flame_envoy'],
+    monsterPool: [
+      {typeId:'firebird', weight:30},
+      {typeId:'soul_envoy', weight:25},
+      {typeId:'flame_envoy', weight:23}
     ]
   }
 };
