@@ -1,3 +1,4 @@
+import { steer } from './pilot.mjs';
 import { createServer } from 'vite';
 
 async function runSimulation() {
@@ -46,38 +47,7 @@ async function runSimulation() {
         }
 
         if (kiting) {
-          const t = eng.clock;
-          let moveX = Math.cos(t * 0.85);
-          let moveY = Math.sin(t * 0.85);
-
-          let nearestEnemy = null;
-          let minD = 9999;
-          for (const m of eng.monsters) {
-            const d = Math.hypot(m.x - eng.player.x, m.y - eng.player.y);
-            if (d < minD) {
-              minD = d;
-              nearestEnemy = m;
-            }
-          }
-          if (nearestEnemy && minD < 145) {
-            moveX = eng.player.x - nearestEnemy.x;
-            moveY = eng.player.y - nearestEnemy.y;
-          } else {
-            let nearestDrop = null;
-            let minDropD = 9999;
-            for (const dp of eng.drops) {
-              const d = Math.hypot(dp.x - eng.player.x, dp.y - eng.player.y);
-              if (d < minDropD) {
-                minDropD = d;
-                nearestDrop = dp;
-              }
-            }
-            if (nearestDrop && minDropD < 420) {
-              moveX = nearestDrop.x - eng.player.x;
-              moveY = nearestDrop.y - eng.player.y;
-            }
-          }
-          eng.setInput(moveX, moveY);
+          if (steps % 5 === 0) steer(eng);
         } else {
           eng.setInput(0, 0);
         }

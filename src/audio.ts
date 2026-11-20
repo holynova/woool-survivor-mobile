@@ -1,3 +1,5 @@
+import { WOOWL_SKILLS } from './config/skills';
+import type { HeroClass } from './types';
 import { assetUrl } from './utils';
 
 export type BgmTrack = 'menu' | 'battle' | 'boss';
@@ -6,6 +8,8 @@ class AudioManager {
   private ctx: AudioContext | null = null;
   private buffers = new Map<string, AudioBuffer>();
   private muted = false;
+  private monsterSound = true;
+  private monsterLast = new Map<string, number>();
   private bgmVolume = 0.42;
   private sfxVolume = 0.5;
 
@@ -23,7 +27,11 @@ class AudioManager {
   private coinStreak = 0;
 
   constructor() {
-    // Audio elements created lazily or on init
+    if (typeof window === 'undefined') return;
+    try {
+      this.muted = localStorage.getItem('woool.mobile.muted') === '1';
+      this.monsterSound = localStorage.getItem('woool.mobile.monsters') !== '0';
+    } catch {}
   }
 
   private initCtx() {
@@ -57,11 +65,13 @@ class AudioManager {
     }
   }
 
-  private loading?:Promise<void>;
-  async init(): Promise<void> {
+  async init(role: HeroClass): Promise<void> {
     this.initCtx();
     this.initBgmElements();
-    await (this.loading ??= this.preloadAll());
+    const sounds=new Set(['ui_click','coin','potion','player_hurt','player_die','monster_hurt','monster_die','skill_holyword']);
+    for(const skill of Object.values(WOOWL_SKILLS)) if(skill.classType===role) sounds.add(skill.soundKey);
+    if(role==='taoist'){sounds.add('skill_slash');sounds.add('skill_fireball');}
+    await Promise.all([...sounds].filter(k=>!this.buffers.has(k)).map(k=>this.loadSound(k,assetUrl('assets/sound/'+k+'.wav'))));
   }
 
   async loadSound(key: string, url: string): Promise<void> {
@@ -76,36 +86,16 @@ class AudioManager {
     } catch {}
   }
 
-  async preloadAll(): Promise<void> {
-    const list = [
-      ['ui_click', assetUrl('assets/sound/ui_click.wav')],
-      ['coin', assetUrl('assets/sound/coin.wav')],
-      ['potion', assetUrl('assets/sound/potion.wav')],
-      ['player_hurt', assetUrl('assets/sound/player_hurt.wav')],
-      ['player_die', assetUrl('assets/sound/player_die.wav')],
-      ['monster_hurt', assetUrl('assets/sound/monster_hurt.wav')],
-      ['monster_die', assetUrl('assets/sound/monster_die.wav')],
-      ['skill_slash', assetUrl('assets/sound/skill_slash.wav')],
-      ['skill_fireball', assetUrl('assets/sound/skill_fireball.wav')],
-      ['skill_lightning', assetUrl('assets/sound/skill_lightning.wav')],
-      ['skill_hellthunder', assetUrl('assets/sound/skill_hellthunder.wav')],
-      ['skill_firewall', assetUrl('assets/sound/skill_firewall.wav')],
-      ['skill_shield', assetUrl('assets/sound/skill_shield.wav')],
-      ['skill_talisman', assetUrl('assets/sound/skill_talisman.wav')],
-      ['skill_poison', assetUrl('assets/sound/skill_poison.wav')],
-      ['skill_shinsu', assetUrl('assets/sound/skill_shinsu.wav')],
-      ['skill_repel', assetUrl('assets/sound/skill_repel.wav')],
-      ['skill_holyword', assetUrl('assets/sound/skill_holyword.wav')]
-    ];
-
-    await Promise.all(list.map(([key, url]) => this.loadSound(key, url)));
-  }
-
   play(key: string, volume = 0.5) {
     if (this.muted) return;
     this.initCtx();
     if (!this.ctx) return;
 
+    if (key === 'monster_hurt' || key === 'monster_die') {
+      const now = performance.now();
+      if (!this.monsterSound || now - (this.monsterLast.get(key) ?? -100) < 95) return;
+      this.monsterLast.set(key, now);
+    }
     const buffer = this.buffers.get(key);
     if (buffer) {
       const source = this.ctx.createBufferSource();
@@ -242,9 +232,9 @@ class AudioManager {
       const ratio = step / maxSteps;
 
       if (prevAudio && !prevAudio.paused) {
-        prevAudio.volume = Math.max(0, targetVol * (1 - ratio));
+        prevAudio.volume = this.muted ? 0 : Math.max(0, targetVol * (1 - ratio));
       }
-      nextAudio.volume = Math.min(targetVol, targetVol * ratio);
+      nextAudio.volume = this.muted ? 0 : Math.min(targetVol, targetVol * ratio);
 
       if (step >= maxSteps) {
         clearInterval(this.bgmFadeInterval);
@@ -253,7 +243,7 @@ class AudioManager {
           prevAudio.pause();
           prevAudio.currentTime = 0;
         }
-        nextAudio.volume = targetVol;
+        nextAudio.volume = this.muted ? 0 : targetVol;
       }
     }, 40);
   }
@@ -316,6 +306,7 @@ class AudioManager {
 
   toggleMute(): boolean {
     this.muted = !this.muted;
+    try { localStorage.setItem('woool.mobile.muted',this.muted?'1':'0'); } catch {}
     if (this.muted) {
       if (this.currentBgmTrack && this.bgmElements[this.currentBgmTrack]) {
         this.bgmElements[this.currentBgmTrack]!.volume = 0;
@@ -326,6 +317,13 @@ class AudioManager {
       }
     }
     return this.muted;
+  }
+
+  monstersEnabled() { return this.monsterSound; }
+  toggleMonsters() {
+    this.monsterSound = !this.monsterSound;
+    try { localStorage.setItem('woool.mobile.monsters',this.monsterSound?'1':'0'); } catch {}
+    return this.monsterSound;
   }
 
   isMuted(): boolean {

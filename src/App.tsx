@@ -5,6 +5,8 @@ import {WOOWL_CHAPTERS as chapters} from './config/chapters';
 import {WOOWL_SKILLS as skills,WOOWL_PASSIVES as passives} from './config/skills';
 import {WOOWL_DIFFICULTY_CURVES as curves} from './config/curves';
 import {sound} from './audio';
+import { Head, Loadout, Records, TrainingPanel, time, media } from './CampaignPanels';
+import { journalKey, readJournal, writeJournal, finishRun, train, type Journal, type Checkpoint } from './journal';
 import type {HeroClass,DifficultyCurveId} from './types';
 
 const roles=[
@@ -12,8 +14,6 @@ const roles=[
   {id:'wizard',name:'法师',skill:skills.fireball.name},
   {id:'taoist',name:'道士',skill:skills.soul_talisman.name+' · 骷髅'}
 ] as const;
-const time=(s:number)=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
-const media=(folder:string,file:string|number)=>'./assets/woool/'+folder+'/'+file+'.png';
 function meter(value:number,max:number){return Math.max(0,Math.min(100,value/max*100))+'%'}
 function pause(){
   if(game.phase==='battle'){game.phase='paused';game.setInput(0,0);game.emit();}
@@ -23,7 +23,26 @@ export function App(){
   const [role,setRole]=useState<HeroClass>('warrior');
   const [chapter,setChapter]=useState('sunset_island');
   const [difficulty,setDifficulty]=useState<DifficultyCurveId>('standard');
-  const [sheet,setSheet]=useState<'maps'|'curves'|null>(null);
+  const [sheet,setSheet]=useState<'maps'|'curves'|'records'|'training'|'loadout'|'retire'|'new'|null>(null);
+  const [journal,setJournal]=useState(readJournal);
+  const journalRef=useRef(journal);
+  const [storageError,setStorageError]=useState(false);
+  const [monsterSound,setMonsterSound]=useState(sound.monstersEnabled());
+  const live=useRef(false);
+  function persist(next:Journal){
+    journalRef.current=next;
+    setJournal(next);
+    setStorageError(!writeJournal(next));
+  }
+  function checkpoint(){
+    if(!live.current)return;
+    if(game.phase==='victory'||game.phase==='game_over'){
+      persist(finishRun(journalRef.current,game,game.phase));
+      live.current=false;
+    }else if(['battle','paused','level_up'].includes(game.phase)){
+      persist({...journalRef.current,saved:structuredClone(game.snapshot())});
+    }
+  }
   const [progress,setProgress]=useState<number|null>(null);
   const [error,setError]=useState(false);
   const [muted,setMuted]=useState(sound.isMuted());
@@ -38,15 +57,21 @@ export function App(){
     field.current?.destroy(true);field.current=null;
   }
   function lobby(){
-    stopField();setProgress(null);setError(false);game.resetForLobby();
+    live.current=false;stopField();setSheet(null);setProgress(null);setError(false);game.resetForLobby();
   }
-  async function start(){
+  async function start(saved?:Checkpoint, nextChapter=chapter){
     if(loading.current)return;
     loading.current=true;
     const token=++generation.current;
     setProgress(0);setError(false);setSheet(null);
-    void sound.init();
-    game.start(role,chapter,difficulty);
+    void sound.init(saved?.heroClass ?? role);
+    if(saved){
+      game.restore(saved);setRole(saved.heroClass);setChapter(saved.chapterId);setDifficulty(saved.difficultyId);
+      sound.playBgm(saved.bossSpawned?'boss':'battle');
+    }else {
+      setChapter(nextChapter);
+      game.start(role,nextChapter,difficulty,journalRef.current.training);
+    }
     const fail=()=>{if(token===generation.current){pause();setError(true);setProgress(0);loading.current=false;}};
     try{
       const {bootField}=await import('./renderer');
@@ -54,35 +79,68 @@ export function App(){
       let failed=false;
       field.current=bootField(v=>{if(token===generation.current)setProgress(Math.round(v*100))},()=>{
         if(token!==generation.current||failed)return;
-        setProgress(null);loading.current=false;
+        setProgress(null);loading.current=false;live.current=true;
+        checkpoint();
         if(document.hidden)pause();
       },()=>{failed=true;fail()});
     }catch{fail()}
   }
   useEffect(()=>{
-    const hidden=()=>{if(document.hidden){field.current?.events.emit('clear-drag');pause()}};
+    let lastTime=-10, lastPhase=game.phase;
+    const unsubscribe=game.subscribe(()=>{
+      if(live.current && (game.phase!==lastPhase || game.clock-lastTime>=5 || game.clock<lastTime)){
+        lastTime=game.clock;checkpoint();
+      }
+      lastPhase=game.phase;
+    });
+    const leave=()=>{field.current?.events.emit('clear-drag');pause();checkpoint()};
+    const hidden=()=>{if(document.hidden)leave()};
+    const otherTab=(e:StorageEvent)=>{
+      if(e.key!==journalKey)return;
+      lobby();
+      const latest=readJournal();
+      journalRef.current=latest;setJournal(latest);
+    };
+    window.addEventListener('storage',otherTab);
+    window.addEventListener('pagehide',leave);
     document.addEventListener('visibilitychange',hidden);
-    return ()=>{document.removeEventListener('visibilitychange',hidden);stopField()};
+    return ()=>{unsubscribe();window.removeEventListener('storage',otherTab);window.removeEventListener('pagehide',leave);document.removeEventListener('visibilitychange',hidden);stopField()};
   },[]);
   const toggleSound=()=>setMuted(sound.toggleMute());
   const defenseMinutes=Math.round(map.durationSeconds*curves[difficulty].bossTimeScale/60);
   const closeSheet=()=>setSheet(null);
+  const mapOrder=Object.keys(chapters);
+  const nextMap=mapOrder[mapOrder.indexOf(chapter)+1];
+  const allCleared=journal.cleared.length===mapOrder.length;
+  const resume=()=>{game.phase=game.upgradeChoices.length?'level_up':'battle';game.emit();};
+  const leaveSaved=()=>{checkpoint();lobby()};
+  const retire=()=>{persist(finishRun(journalRef.current,game,'retired'));lobby()};
   return <main>
+    {storageError&&<div role="status" className="storage-error">浏览器未能保存进度，请保留此页面。</div>}
     {inLobby&&<section className="home" style={{backgroundImage:'linear-gradient(180deg,#12141316 12%,#11150fe6 61%,#0f120fff 91%),url('+map.bgImage+')'}}>
-      <header className="mast"><span>传 世</span><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></header>
+      <header className="mast"><span>传 世</span><nav><button disabled={progress!==null} onClick={()=>setSheet('records')}>战绩</button><button disabled={progress!==null} onClick={()=>setSheet('training')}>修行</button><button onClick={toggleSound}>{muted?'声音关':'声音开'}</button></nav></header>
       <div className="home-body">
         <h1>传奇世界<span>幸存者</span></h1>
         <button className="map-choice" onClick={()=>setSheet('maps')} disabled={progress!==null}><small>出征地图</small><strong>{map.name.split(' · ')[0]}</strong><span>换图 ›</span></button>
         <div className="roles">{roles.map((r,i)=><button key={r.id} aria-pressed={r.id===role} disabled={progress!==null} onClick={()=>setRole(r.id)}>
           <img src={media('ui','head_'+(i+1))} alt=""/><span>{r.name}</span></button>)}</div>
         <div className="brief"><span>起手 · {hero.skill}</span><button onClick={()=>setSheet('curves')} disabled={progress!==null}>{curves[difficulty].name} ›</button></div>
-        {error?<button className="primary" onClick={lobby}>加载失败 · 返回重试</button>:progress===null?<button className="primary" onClick={start}>出 战</button>:<div className="load">准备战场 · {progress}%<progress max="100" value={progress}/></div>}
+        {error?<button className="primary" onClick={lobby}>加载失败 · 返回重试</button>:progress===null?<><button className="primary" onClick={()=>journal.saved?setSheet('new'):void start()}>出 战</button>
+        {journal.saved&&<button className="resume" onClick={()=>void start(journal.saved!)}>继续上局 · {chapters[journal.saved.chapterId].name.split(' · ')[0]} {time(journal.saved.clock)} ›</button>}</>:<div className="load">准备战场 · {progress}%<progress max="100" value={progress}/></div>}
       </div>
     </section>}
-    {sheet&&<div className="veil"><section className="panel" role="dialog" aria-label={sheet==='maps'?'选择地图':'选择难度'}>
+    {(sheet==='maps'||sheet==='curves')&&<div className="veil"><section className="panel" role="dialog" aria-label={sheet==='maps'?'选择地图':'选择难度'}>
       <div className="panel-head"><h2>{sheet==='maps'?'选择地图':'选择难度'}</h2><button aria-label="关闭" onClick={closeSheet}>×</button></div>
-      {sheet==='maps'?Object.values(chapters).map(c=><button className="row" aria-pressed={chapter===c.id} key={c.id} onClick={()=>{setChapter(c.id);closeSheet()}}><img loading="lazy" src={c.bgImage} alt=""/><span><b>{c.name}</b><small>{c.bossName}</small></span></button>):
+      {sheet==='maps'?Object.values(chapters).map(c=><button className="row" aria-pressed={chapter===c.id} key={c.id} onClick={()=>{setChapter(c.id);closeSheet()}}><img loading="lazy" src={c.bgImage.replace('/maps/','/maps/thumbs/')} alt=""/><span><b>{c.name}</b><small>{journal.cleared.includes(c.id)?'已通关 · ':''}{c.bossName}</small></span></button>):
       Object.values(curves).map(c=><button className="row" aria-pressed={difficulty===c.id} key={c.id} onClick={()=>{setDifficulty(c.id);closeSheet()}}><span><b>{c.name}</b><small>{c.summary}</small></span></button>)}
+    </section></div>}
+    {(sheet==='records'||sheet==='training'||sheet==='new')&&<div className="veil"><section className="panel" role="dialog">
+      <Head title={{records:'出征战绩',training:'传世修行',new:'另启征程'}[sheet]} close={closeSheet}/>
+      {sheet==='records'?<Records journal={journal}/>:sheet==='training'?<TrainingPanel journal={journal} buy={id=>persist(train(journalRef.current,id))}/>:
+        <><p>开始新局会结束上次出征，上局金币将收入库银。</p><button className="primary" onClick={()=>{
+          if(journal.saved){game.restore(journal.saved);persist(finishRun(journalRef.current,game,'retired'))}
+          void start();
+        }}>结算上局并出战</button></>}
     </section></div>}
     {!inLobby&&<>
       <div className="top"><span>{time(game.clock)}</span><button aria-label="暂停" onClick={()=>{field.current?.events.emit('clear-drag');pause()}}>Ⅱ</button></div>
@@ -93,9 +151,20 @@ export function App(){
         <div className="xp"><span>Lv. {player.level}</span><div><i style={{width:meter(player.exp,player.maxExp)}}/></div><span>{player.kills} 斩</span></div>
       </footer>
       {game.phase!=='battle'&&<div className="veil"><section className="panel" role="dialog">
-        {game.phase==='level_up'?<><small>等级 {player.level}</small><h2>选择修炼</h2>{game.upgradeChoices.map(c=><button className="row" key={c.id} onClick={()=>game.selectUpgrade(c)}><img src={media(c.type==='passive'&&passives[c.id]?.iconType==='item'||c.iconId>100000?'items':'skills',c.iconId)} alt=""/><span><b>{c.title}</b><small>{c.description}</small></span></button>)}</>:
-        game.phase==='paused'?<><small>{map.name}</small><h2>战斗暂停</h2><p>拖动战场移动，技能自动施放。第 {defenseMinutes} 分钟迎战{map.bossName}。</p><p>{game.activeSkills.map(s=>skills[s.id].name+' '+s.level+'级').join(' · ')}</p><button className="primary" onClick={()=>{game.phase='battle';game.emit()}}>继续战斗</button><div className="actions"><button onClick={toggleSound}>{muted?'打开声音':'关闭声音'}</button><button onClick={lobby}>结束本局</button></div></>:
-        <><small>{map.name}</small><h2>{game.phase==='victory'?'守关成功':'此战已尽'}</h2><p>存活 {time(game.clock)} · 击败 {player.kills} · 等级 {player.level}</p><button className="primary" onClick={lobby}>返回大厅</button></>}
+        {game.phase==='level_up'?<><small>等级 {player.level}</small><Head title="选择修炼" close={()=>{field.current?.events.emit('clear-drag');game.phase='paused';game.emit()}}/>{game.upgradeChoices.map(c=><button className="row" key={c.id} onClick={()=>game.selectUpgrade(c)}><img src={media(c.type==='passive'&&passives[c.id]?.iconType==='item'||c.iconId>100000?'items':'skills',c.iconId)} alt=""/><span><b>{c.title}</b><small>{c.description}</small></span></button>)}</>:
+        game.phase==='paused'?sheet==='loadout'?<><Head title="行囊与技能" close={closeSheet}/><Loadout changed={checkpoint}/></>:
+        sheet==='retire'?<><Head title="撤离战场" close={closeSheet}/><p>本局将结束，{player.gold} 金收入库银。</p><button className="primary" onClick={retire}>结算并撤离</button></>:
+        <><small>{map.name} · {game.wavePhaseName}</small><Head title="战斗暂停" close={resume}/>
+          <p>第 {defenseMinutes} 分钟迎战{map.bossName}。随身 {player.gold} 金。</p>
+          <button className="primary" onClick={resume}>继续战斗</button><div className="pause-grid">
+          <button disabled={game.upgradeChoices.length>0} onClick={()=>setSheet('loadout')}>行囊与技能</button><button onClick={leaveSaved}>存档回城</button>
+          <button onClick={toggleSound}>{muted?'声音关':'声音开'}</button><button onClick={()=>setMonsterSound(sound.toggleMonsters())}>怪物音效{monsterSound?'开':'关'}</button>
+          </div><button className="resume" onClick={()=>setSheet('retire')}>结束本局</button></>:
+        <><small>{map.name}</small><Head title={game.phase==='victory'?(allCleared?'六境平定':'守关成功'):'此战已尽'} close={lobby}/><p>存活 {time(game.clock)} · 击败 {player.kills} · 等级 {player.level}<br/>入库 {player.gold} 金 · 已通关 {journal.cleared.length}/6 章</p>
+          <button className="primary" onClick={()=>{
+            stopField();live.current=false;
+            void start(undefined,game.phase==='victory' && nextMap ? nextMap : chapter)
+          }}>{game.phase==='victory' && nextMap?'继续 · '+chapters[nextMap].name.split(' · ')[0]:'再战本章'}</button><button className="resume" onClick={lobby}>返回大厅</button></>}
       </section></div>}
     </>}
   </main>

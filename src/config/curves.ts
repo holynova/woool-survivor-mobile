@@ -283,7 +283,7 @@ export function evaluateCurveState(
     spawnChancePerSec,
     hpMult: curve.hpMult * effectiveChapterHp * waveHpFactor,
     dmgMult: curve.dmgMult * effectiveChapterDmg,
-    speedMult: curve.speedMult * effectiveChapterSpd * waveSpeedFactor * 1.04,
+    speedMult: curve.speedMult * effectiveChapterSpd * waveSpeedFactor * 1.04 * (curveId === 'standard' ? .85 + .15 * Math.min(1, elapsed / 75) : 1),
     expBonusFlat,
     progress: p
   };

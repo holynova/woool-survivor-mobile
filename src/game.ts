@@ -20,6 +20,8 @@ import {
   WOOWL_DIFFICULTY_CURVES,
   evaluateCurveState
 } from './config/curves';
+import { attackZones, type DangerZone } from './encounters';
+import { gearInfo, freshTraining, type Equipment, type Training } from './config/equipment';
 import { sound } from './audio';
 
 export const WORLD_WIDTH = 2560;
@@ -59,6 +61,10 @@ export class GameEngine {
   chapterId = 'sunset_island';
   difficultyId: DifficultyCurveId = 'standard';
 
+  runId = '';
+  equipment: Equipment = {weapon: 0, armor: 0};
+  training: Training = freshTraining();
+  dangers: DangerZone[] = [];
   clock = 0;
   wave = 1;
   wavePhaseName = '发育起势';
@@ -174,7 +180,14 @@ export class GameEngine {
     this.emit();
   }
 
-  start(heroClass: HeroClass, chapterId: string, difficultyId?: DifficultyCurveId) {
+  start(heroClass: HeroClass, chapterId: string, difficultyId?: DifficultyCurveId, training = freshTraining()) {
+    this.runId = globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
+    this.training = {...training};
+    this.equipment = {weapon: 0, armor: 0};
+    this.dangers = [];
+    this.upgradeChoices = [];
+    this.player.dir = 4;
+    this.player.moving = false;
     this.heroClass = heroClass;
     this.chapterId = chapterId;
     if (difficultyId) {
@@ -202,7 +215,7 @@ export class GameEngine {
     sound.playBgm('battle');
     this.activeSkills = [];
     this.activePassives = [];
-    this.shieldReduction = 0.4;
+    this.shieldReduction = 0;
     this.thornRatio = 0;
 
     this.player.x = WORLD_WIDTH / 2;
@@ -242,6 +255,61 @@ export class GameEngine {
     }
 
     this.emit();
+  }
+
+  snapshot() {
+    return {
+      runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
+      phase: this.phase, clock: this.clock, wave: this.wave, wavePhaseName: this.wavePhaseName,
+      waveProgress: this.waveProgress, waveTimer: this.waveTimer, bossSpawned: this.bossSpawned, bossDefeated: this.bossDefeated,
+      eliteTimer: this.eliteTimer, milestones: [...this.spawnedMilestones], spawnAccumulator: this.spawnAccumulator,
+      statusTickTimer: this.statusTickTimer, shieldReduction: this.shieldReduction, thornRatio: this.thornRatio,
+      nextEntityId: this.nextEntityId, player: this.player, activeSkills: this.activeSkills, activePassives: this.activePassives,
+      monsters: this.monsters, minions: this.minions, drops: this.drops, upgradeChoices: this.upgradeChoices,
+      equipment: this.equipment, training: this.training, dangers: this.dangers, alertBanner: this.alertBanner
+    };
+  }
+
+  restore(saved: ReturnType<GameEngine['snapshot']>) {
+    const { milestones, ...state } = structuredClone(saved);
+    Object.assign(this, state);
+    this.spawnedMilestones = new Set(milestones);
+    this.phase = state.phase === 'level_up' ? 'level_up' : 'paused';
+    this.effects = [];
+    this.damageNumbers = [];
+    this.setInput(0, 0);
+    this.emit();
+  }
+
+  availableReplacements() {
+    return Object.values(WOOWL_SKILLS).filter(s => s.classType === this.heroClass
+      && !this.activeSkills.some(active => active.id === s.id)
+      && (s.quality !== 'legendary' || this.player.level >= 9)
+      && (s.quality !== 'mythic' || this.player.level >= 6));
+  }
+
+  changeSkill(id: string, replacement?: string) {
+    if (this.phase !== 'paused') return false;
+    const index = this.activeSkills.findIndex(s => s.id === id);
+    if (index < 0 || (!replacement && this.activeSkills.length <= 1)) return false;
+    if (replacement) {
+      const def = this.availableReplacements().find(s => s.id === replacement);
+      if (!def || this.player.gold < 80) return false;
+      this.player.gold -= 80;
+      this.activeSkills[index] = {id: def.id, level: 1, maxCd: def.cooldown, cdTimer: def.cooldown};
+    } else this.activeSkills.splice(index, 1);
+
+    if (id === 'shinsu_summon') this.minions = this.minions.filter(m => m.type !== 'shinsu');
+    if (id === 'summon_skeleton' || id === 'enhanced_skeleton') {
+      this.minions = this.minions.filter(m => m.type !== 'skeleton');
+      if (this.heroClass === 'taoist') this.spawnMinion('skeleton');
+    }
+    if (id === 'wind_shield' || id === 'diamond_body') {
+      this.player.shieldUntil = 0;
+      this.thornRatio = 0;
+    }
+    this.emit();
+    return true;
   }
 
   getActiveBoss(): MonsterEntity | undefined {
@@ -287,13 +355,12 @@ export class GameEngine {
     }
 
     this.updateSkills(clampedDt);
-    this.updateMinions(clampedDt);
-    this.updateMonsterSpawns(clampedDt);
-    this.updateMonsterStatuses(clampedDt);
-    this.updateDrops(clampedDt);
+    if (this.phase === 'battle') this.updateMinions(clampedDt);
+    if (this.phase === 'battle') this.updateMonsterSpawns(clampedDt);
+    if (this.phase === 'battle') this.updateMonsterStatuses(clampedDt);
+    if (this.phase === 'battle') this.updateDrops(clampedDt);
     this.updateDamageNumbers(clampedDt);
-
-    this.emit();
+    if (this.phase !== 'battle' || Math.floor(this.clock*10) !== Math.floor((this.clock-clampedDt)*10)) this.emit();
   }
 
   private updateSkills(dt: number) {
@@ -473,7 +540,7 @@ export class GameEngine {
       return true;
     }
 
-    if (id === 'meteor_fire_rain') {
+    if (id === 'celestial_meteor') {
       // Level 1: exactly 1 meteor
       // Level 2: 2 meteors
       // Level 3: 3 meteors + slow & burn
@@ -679,6 +746,7 @@ export class GameEngine {
         this.damageEnemy(m, Math.round(finalDamage * burstMult), true);
         if (level >= 2) {
           m.burnUntil = Math.max(m.burnUntil || 0, this.clock + 3.0);
+            m.burnDps = Math.max(m.burnDps || 0, Math.round(finalDamage * .18));
         }
       }
       return true;
@@ -716,14 +784,15 @@ export class GameEngine {
         this.effects.push({
           id: this.nextEntityId++,
           type: 'fireball',
-          x: target.x,
-          y: target.y,
+          x: this.player.x, y: this.player.y,
+          targetX: target.x, targetY: target.y,
           level
         });
         const isCrit = level >= 4 || Math.random() < 0.25;
         this.damageEnemy(target, isCrit ? Math.round(finalDamage * 1.5) : finalDamage, isCrit);
         if (level >= 3) {
           target.burnUntil = Math.max(target.burnUntil || 0, this.clock + 2.0);
+            target.burnDps = Math.max(target.burnDps || 0, Math.round(finalDamage * .18));
         }
         if (level >= 4) {
           const splashR = 75;
@@ -792,6 +861,7 @@ export class GameEngine {
             this.damageEnemy(m, finalDamage, level >= 4);
             if (level >= 3) {
               m.burnUntil = Math.max(m.burnUntil || 0, this.clock + 3.0);
+            m.burnDps = Math.max(m.burnDps || 0, Math.round(finalDamage * .18));
             }
           }
         }
@@ -800,7 +870,8 @@ export class GameEngine {
     }
 
     if (id === 'attack_slash') {
-      const target = this.findNearestEnemy(this.player.x, this.player.y, def.range + 30);
+      const hitRadius = level >= 3 ? 120 : 85;
+      const target = this.findNearestEnemy(this.player.x,this.player.y,hitRadius);
       if (!target) return false;
 
       sound.play(def.soundKey);
@@ -815,7 +886,6 @@ export class GameEngine {
       });
 
       const pushDist = level >= 2 ? 65 : 45;
-      const hitRadius = level >= 3 ? 120 : 85;
       for (const m of this.monsters) {
         if (Math.hypot(m.x - this.player.x, m.y - this.player.y) <= hitRadius) {
           const mAngle = Math.atan2(m.y - this.player.y, m.x - this.player.x);
@@ -833,7 +903,8 @@ export class GameEngine {
     }
 
     if (id === 'assassination_sword') {
-      const target = this.findNearestEnemy(this.player.x, this.player.y, def.range + 40);
+      const pierceLen = def.range * (level >= 3 ? 1.3 : 1);
+      const target = this.findNearestEnemy(this.player.x, this.player.y, pierceLen);
       if (!target) return false;
 
       sound.play(def.soundKey);
@@ -853,7 +924,7 @@ export class GameEngine {
         level
       });
 
-      const pierceLen = def.range * (level >= 3 ? 1.3 : 1.0);
+
       for (const m of this.monsters) {
         if (m.hp <= 0) continue;
         const vmx = m.x - this.player.x;
@@ -895,7 +966,7 @@ export class GameEngine {
 
     if (id === 'heal_spell') {
       sound.play(def.soundKey);
-      const healAmount = level >= 3 ? 80 : (level >= 2 ? 55 : 35);
+      const healAmount = level >= 4 ? 110 : level >= 3 ? 80 : (level >= 2 ? 55 : 35);
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmount);
       this.effects.push({
         id: this.nextEntityId++,
@@ -960,33 +1031,11 @@ export class GameEngine {
       return true;
     }
 
-    if (id === 'celestial_meteor') {
-      const target = this.findNearestEnemy(this.player.x, this.player.y, def.range);
-      if (!target) return false;
-      sound.play(def.soundKey);
-      this.effects.push({
-        id: this.nextEntityId++,
-        type: 'meteor',
-        x: target.x,
-        y: target.y,
-        radius: finalArea,
-        level: 4
-      });
-      const inRange = this.monsters.filter(m => Math.hypot(m.x - target.x, m.y - target.y) <= finalArea);
-      for (const m of inRange) {
-        this.damageEnemy(m, finalDamage, true);
-        m.burnUntil = Math.max(m.burnUntil || 0, this.clock + 4.0);
-        m.burnDps = Math.max(m.burnDps || 0, Math.round(finalDamage * 0.4));
-      }
-      return true;
-    }
-
-
     if (id === 'lion_roar') {
       sound.play(def.soundKey);
       this.effects.push({
         id: this.nextEntityId++,
-        type: 'hell_thunder',
+        type: 'lion_roar',
         x: this.player.x,
         y: this.player.y,
         radius: finalArea,
@@ -1162,7 +1211,7 @@ export class GameEngine {
           vx = Math.cos(flankAng) * moveSpeed * 1.1;
           vy = Math.sin(flankAng) * moveSpeed * 1.1;
         }
-      } else if (m.typeId === 'wild_boar') {
+      } else if (m.typeId === 'wild_boar' && !m.isElite) {
         // Angry sprint burst when close
         m.dashCd = (m.dashCd ?? 4.0) - dt;
         if (m.dashCd <= 0 && dist < 260) {
@@ -1176,14 +1225,11 @@ export class GameEngine {
         }
       }
 
-      // Boss & Elite surge every 5-6s
-      if ((m.isBoss || m.isElite) && dist > 100 && dist < 480) {
-        m.dashCd = (m.dashCd ?? 5.0) - dt;
+      if ((m.isBoss || m.isElite) && dist < 460) {
+        m.dashCd = (m.dashCd ?? 3) - dt;
         if (m.dashCd <= 0) {
-          m.dashCd = m.isBoss ? 4.2 : 5.8;
-          vx *= 2.5;
-          vy *= 2.5;
-          this.addDamageNumber(m.x, m.y - 30, m.isBoss ? '【魔主狂暴！】' : '【野性冲锋！】', '#ff3333', true);
+          m.dashCd = m.isBoss ? 4.8 : 7;
+          this.dangers.push(...attackZones(this.chapterId, m, this.player, this.clock));
         }
       }
 
@@ -1194,6 +1240,16 @@ export class GameEngine {
         meleeAttackers.push(m);
       }
     }
+
+    this.dangers = this.dangers.filter(zone => {
+      if (!this.monsters.some(m => m.id === zone.owner)) return false;
+      if (zone.impact <= this.clock && zone.damage > 0) {
+        const dist = Math.hypot(this.player.x-zone.x, this.player.y-zone.y);
+        if (this.phase === 'battle' && dist <= zone.radius && dist >= zone.inner) this.hitPlayer(zone.damage);
+        zone.damage = 0;
+      }
+      return this.clock < zone.impact + .23;
+    });
 
     if (meleeAttackers.length > 0 && this.player.invulnerableTime <= 0) {
       const lead = meleeAttackers.reduce((best, cur) => (cur.damage > best.damage ? cur : best), meleeAttackers[0]);
@@ -1243,8 +1299,12 @@ export class GameEngine {
 
     const angle = Math.random() * Math.PI * 2;
     const dist = customDist ?? (520 + Math.random() * 220);
-    const x = Math.max(80, Math.min(WORLD_WIDTH - 80, this.player.x + Math.cos(angle) * dist));
-    const y = Math.max(80, Math.min(WORLD_HEIGHT - 80, this.player.y + Math.sin(angle) * dist));
+    const edgeSafe = (position: number, offset: number, size: number) => {
+      const value = position + offset;
+      return value < 80 || value > size - 80 ? position - offset : value;
+    };
+    const x = edgeSafe(this.player.x, Math.cos(angle) * dist, WORLD_WIDTH);
+    const y = Math.max(80, Math.min(WORLD_HEIGHT-80, edgeSafe(this.player.y, Math.sin(angle) * dist, WORLD_HEIGHT)));
 
     const pickedType = isElite
       ? (state.progress < 0.22 ? this.pickMonsterFromPool(state.progress) : (Math.random() < 0.5 ? 'enhanced_skeleton' : this.pickMonsterFromPool(state.progress)))
@@ -1439,7 +1499,7 @@ export class GameEngine {
   private hitPlayer(dmg: number, attacker?: MonsterEntity) {
     if (this.player.invulnerableTime > 0) return;
 
-    let finalDmg = dmg;
+    let finalDmg = dmg * (1 - this.equipment.armor * 0.075);
     if (this.clock < this.player.shieldUntil) {
       finalDmg *= (1 - this.shieldReduction);
     }
@@ -1480,6 +1540,11 @@ export class GameEngine {
   private killEnemy(m: MonsterEntity) {
     this.monsters = this.monsters.filter(e => e.id !== m.id);
     this.player.kills++;
+    if (!m.isBoss && (m.isElite || Math.random() < 0.018)) {
+      const slot = Math.random() < .5 ? 'weapon' : 'armor';
+      const rank = Math.min(4, 1 + Math.floor(this.clock / 330) + (m.typeId === 'elite_milestone' ? 1 : 0));
+      this.drops.push({id: this.nextEntityId++, type: 'gear', slot, value: rank, x: m.x, y: m.y});
+    }
     sound.play('monster_die', 0.3);
 
     const tier: 1 | 2 | 3 = m.exp < 6 ? 1 : (m.exp < 20 ? 2 : 3);
@@ -1493,25 +1558,7 @@ export class GameEngine {
     });
 
     if (m.isBoss) {
-      // Boss massive victory loot: 8 large gold coin piles + health restoration
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        this.drops.push({
-          id: this.nextEntityId++,
-          type: 'gold',
-          x: m.x + Math.cos(a) * 60,
-          y: m.y + Math.sin(a) * 60,
-          value: 100,
-          tier: 3
-        });
-      }
-      this.drops.push({
-        id: this.nextEntityId++,
-        type: 'potion',
-        x: m.x,
-        y: m.y,
-        value: 100
-      });
+      this.player.gold += 800;
       this.bossDefeated = true;
       this.phase = 'victory';
       sound.playBgm('menu');
@@ -1550,6 +1597,18 @@ export class GameEngine {
 
   private updateDrops(dt: number) {
     const pickupDist = this.player.pickupRange;
+    if (this.drops.length > 320 && Math.floor(this.clock)!==Math.floor(this.clock-dt)) {
+      const piles = new Map<string, DropEntity>();
+      this.drops = this.drops.filter(d => {
+        if ((d.type !== 'exp' && d.type !== 'gold') || Math.hypot(this.player.x-d.x,this.player.y-d.y)<pickupDist+64) return true;
+        const cell = d.type + ':' + Math.floor(d.x/96) + ':' + Math.floor(d.y/96);
+        const pile = piles.get(cell);
+        if (!pile) { piles.set(cell,d); return true; }
+        pile.value += d.value;
+        pile.tier = pile.value>=20 ? 3 : 2;
+        return false;
+      });
+    }
 
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
@@ -1561,13 +1620,25 @@ export class GameEngine {
         d.x += Math.cos(angle) * flySpeed * dt;
         d.y += Math.sin(angle) * flySpeed * dt;
 
-        if (dist <= 32) {
+        if (dist <= 32 || dist <= flySpeed * dt) {
           if (d.type === 'exp') {
             this.gainExp(d.value);
             sound.playCoinPickup(d.tier || 1);
           } else if (d.type === 'gold') {
             this.player.gold += d.value;
             sound.playCoinPickup(d.tier || 1);
+          } else if (d.type === 'gear' && d.slot) {
+            const info = gearInfo(this.heroClass, d.slot, d.value);
+            if (d.value > this.equipment[d.slot]) {
+              this.equipment[d.slot] = d.value;
+              this.applyPassiveEffects();
+              this.addDamageNumber(this.player.x, this.player.y, info.title, '#ffcf82', true);
+            } else {
+              const value = d.value * 18;
+              this.player.gold += value;
+              this.addDamageNumber(this.player.x, this.player.y, '售 +' + value, '#e6c57c');
+            }
+            sound.playCoinPickup(2);
           } else if (d.type === 'potion') {
             const healAmt = d.value || 40;
             this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
@@ -1575,6 +1646,7 @@ export class GameEngine {
             this.addDamageNumber(this.player.x, this.player.y, `+${healAmt} 气血`, '#44ff44');
           }
           this.drops.splice(i, 1);
+          if (this.phase !== 'battle') return;
         }
       }
     }
@@ -1585,7 +1657,7 @@ export class GameEngine {
     if (this.player.exp >= this.player.maxExp) {
       this.player.exp -= this.player.maxExp;
       this.player.level++;
-      this.player.maxExp = Math.round(this.player.maxExp * 1.48 + 5);
+      this.player.maxExp = Math.round(this.player.maxExp + 9 + this.player.level * 3.8);
       this.player.maxHp += 15;
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.16));
       this.player.invulnerableTime = Math.max(this.player.invulnerableTime, 0.85);
@@ -1616,7 +1688,10 @@ export class GameEngine {
   private triggerLevelUp() {
     this.phase = 'level_up';
     this.upgradeChoices = this.generateUpgradeChoices();
-    this.emit();
+    if (!this.upgradeChoices.length) {
+      this.player.gold += 60;
+      this.phase = 'battle';
+    }
   }
 
   private generateUpgradeChoices() {
@@ -1727,6 +1802,7 @@ export class GameEngine {
   }
 
   selectUpgrade(choice: GameEngine['upgradeChoices'][0]) {
+    if (this.phase !== 'level_up' || !this.upgradeChoices.includes(choice)) return;
     sound.play('ui_click');
 
     if (choice.type === 'skill') {
@@ -1751,20 +1827,21 @@ export class GameEngine {
       this.applyPassiveEffects();
     }
 
+    this.upgradeChoices = [];
     this.phase = 'battle';
     this.emit();
   }
 
   private applyPassiveEffects() {
     const chapDiff = WOOWL_CHAPTERS[this.chapterId]?.chapterDifficulty || 1.0;
-    this.player.damageBonus = (chapDiff - 1) * 0.30;
+    this.player.damageBonus = (chapDiff - 1) * 0.30 + this.equipment.weapon * .19 + this.training.might * .04;
     this.player.speed = this.heroClass === 'warrior' ? 225 : this.heroClass === 'wizard' ? 212 : 218;
     this.player.cooldownBonus = 0;
     this.player.areaBonus = 0;
-    this.player.pickupRange = 135;
+    this.player.pickupRange = 135 + this.training.fortune * 8;
     this.player.hpRegen = 0.5;
 
-    const baseHp = (this.heroClass === 'warrior' ? 240 : this.heroClass === 'wizard' ? 155 : 190) + Math.round((chapDiff - 1) * 30);
+    const baseHp = (this.heroClass === 'warrior' ? 240 : this.heroClass === 'wizard' ? 155 : 190) + Math.round((chapDiff - 1) * 30) + this.training.vitality * 15;
     let hpModTotal = 0;
 
     for (const p of this.activePassives) {
@@ -1790,6 +1867,7 @@ export class GameEngine {
   }
 
   private addDamageNumber(x: number, y: number, text: string, color: string, crit = false) {
+    if (this.damageNumbers.length >= 36) this.damageNumbers.shift();
     this.damageNumbers.push({
       id: this.nextEntityId++,
       x,
@@ -1838,6 +1916,3 @@ export class GameEngine {
 }
 
 export const game = new GameEngine();
-if (typeof window !== 'undefined') {
-  (window as any).game = game;
-}

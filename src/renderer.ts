@@ -4,6 +4,8 @@ import {WOOWL_SKILLS} from './config/skills';
 import Phaser from 'phaser';
 import { game, calcDirection, WORLD_WIDTH, WORLD_HEIGHT } from './game';
 import type { EffectEvent, MonsterEntity, MinionEntity, DropEntity, DamageNumber } from './types';
+import { handAnchor } from './config/handAnchors';
+import { gearInfo, gearColors } from './config/equipment';
 import { assetUrl } from './utils';
 
 // Map 0-7 direction to 5-direction digit + flipX
@@ -29,6 +31,8 @@ const HERO_ATLAS_MAP: Record<string, string> = {
 export class BattleScene extends Phaser.Scene {
   // Entities
   private playerSprite!: Phaser.GameObjects.Sprite;
+  private weapon!: Phaser.GameObjects.Image;
+  private groundFx!: Phaser.GameObjects.Graphics;
   private playerShadow!: Phaser.GameObjects.Graphics;
   private playerShieldSprite!: Phaser.GameObjects.Sprite;
 
@@ -81,6 +85,10 @@ export class BattleScene extends Phaser.Scene {
     this.load.on('loaderror', ()=>this.game.events.emit('field-error'));
     this.load.image('ground',chapter.bgImage);
     for(let tier=1;tier<=3;tier++) this.load.image('coin_'+tier, assetUrl('assets/woool/items/gold_coin_'+tier+'.png'));
+    for (const slot of ['weapon','armor'] as const) {
+      const icons = new Set([0,1].map(rank => gearInfo(game.heroClass,slot,rank).icon));
+      for (const icon of icons) this.load.image('gear_'+icon,assetUrl('assets/woool/items/'+icon+'.png'));
+    }
     const atlas=(key:string, path:string)=>this.load.atlas(key,assetUrl(path+'@0.png'),assetUrl(path+'@0.json'));
     const hero=HERO_ATLAS_MAP[game.heroClass];
     atlas(hero,'assets/woool/heroes/r_'+hero.slice(5));
@@ -94,7 +102,7 @@ export class BattleScene extends Phaser.Scene {
     for (const id of monsters) atlas('m_'+id,'assets/woool/monsters/m_'+id);
     atlas('level_up','assets/woool/effects/level_up');
     const effects=new Set(Object.values(WOOWL_SKILLS).filter(s=>s.classType===game.heroClass).map(s=>s.iconId));
-    effects.delete(3303); // Uses existing summon animations.
+    if(game.heroClass==='warrior') this.load.atlas('fx_1102_more',assetUrl('assets/woool/skills_fx/s_1102@1.png'),assetUrl('assets/woool/skills_fx/s_1102@1.json'));
     if(game.heroClass==='wizard') effects.add(2011);
     if(game.heroClass==='taoist'){ effects.add(2001); effects.add(1004); } // Summon fire and axe impacts.
     for(const id of effects) atlas('fx_'+id,'assets/woool/skills_fx/s_'+id);
@@ -110,6 +118,8 @@ export class BattleScene extends Phaser.Scene {
     this.cameras.main.setZoom(1);
 
     // 4. Graphics Layers
+    this.groundFx = this.add.graphics().setDepth(4);
+    this.weapon = this.add.image(game.player.x,game.player.y,'gear_5010101').setOrigin(.79,.80).setScale(.72);
     this.playerShadow = this.add.graphics().setDepth(5);
     this.fxGraphics = this.add.graphics().setDepth(2000);
     this.uiGraphics = this.add.graphics().setDepth(3000);
@@ -167,6 +177,12 @@ export class BattleScene extends Phaser.Scene {
     this.input.on('pointerupoutside', resetJoystick);
     this.input.on('gameout',resetJoystick);
     this.game.events.on('clear-drag',resetJoystick);
+    this.cameras.main.centerOn(game.player.x, game.player.y);
+    this.syncPlayer();
+    this.syncMonsters();
+    this.syncMinions();
+    this.syncDrops();
+    this.syncUI(0);
     this.game.events.emit('field-ready');
   }
 
@@ -301,7 +317,6 @@ export class BattleScene extends Phaser.Scene {
     const heroAtlas = HERO_ATLAS_MAP[this.currentHeroClass] || 'hero_5120503';
     const { dirDigit, flipX } = getDirInfo(game.player.dir);
     this.playerSprite.setFlipX(flipX);
-
     const animKey = game.player.moving
       ? `${heroAtlas}_walk_${dirDigit}`
       : `${heroAtlas}_idle_${dirDigit}`;
@@ -312,6 +327,17 @@ export class BattleScene extends Phaser.Scene {
       }
     }
 
+    const rank = game.equipment.weapon;
+    const weapon = gearInfo(game.heroClass,'weapon',rank);
+    const [handX,handY] = handAnchor(dirDigit,String(this.playerSprite.frame.name),game.player.moving);
+    const bladePointsLeft = game.player.dir >= 4;
+    this.weapon.setTexture('gear_'+weapon.icon).setTint(gearColors[rank]).setFlipX(!bladePointsLeft)
+      .setOrigin(bladePointsLeft ? .8 : .2,.83)
+      .setPosition(game.player.x+(flipX ? -handX : handX),game.player.y+handY)
+      .setDepth(game.player.y+(dirDigit < 2 ? -1 : 1));
+    const armorColor=gearColors[game.equipment.armor];
+    this.playerSprite.setTint(0xffffff,0xffffff,armorColor,armorColor);
+
     // Flash white when invulnerable
     if (game.player.invulnerableTime > 0) {
       const flash = Math.floor(game.clock * 20) % 2 === 0;
@@ -319,6 +345,8 @@ export class BattleScene extends Phaser.Scene {
     } else {
       this.playerSprite.setAlpha(1.0);
     }
+
+    this.weapon.setAlpha(this.playerSprite.alpha);
 
     // Player Shadow
     this.playerShadow.clear();
@@ -384,7 +412,7 @@ export class BattleScene extends Phaser.Scene {
 
       // Status Tints
       if (m.poisonUntil && game.clock < m.poisonUntil) {
-        sprite.setTint(0x66ff88);
+        sprite.setTint(0xcf6684);
       } else if (m.burnUntil && game.clock < m.burnUntil) {
         sprite.setTint(0xff9955);
       } else if (m.stunUntil && game.clock < m.stunUntil) {
@@ -454,10 +482,10 @@ export class BattleScene extends Phaser.Scene {
     const activeDropIds = new Set<number>();
 
     for (const d of game.drops) {
-      if (d.type === 'exp' || d.type === 'gold') {
+      if (d.type !== 'potion' && this.cameras.main.worldView.contains(d.x,d.y)) {
         activeDropIds.add(d.id);
         let sprite = this.dropSprites.get(d.id);
-        const tex = d.tier === 3 ? 'coin_3' : (d.tier === 2 ? 'coin_2' : 'coin_1');
+        const tex = d.type === 'gear' && d.slot ? 'gear_'+gearInfo(game.heroClass,d.slot,d.value).icon : d.tier === 3 ? 'coin_3' : (d.tier === 2 ? 'coin_2' : 'coin_1');
 
         if (!sprite) {
           sprite = this.dropPool.pop() || this.add.sprite(d.x, d.y, tex);
@@ -469,6 +497,8 @@ export class BattleScene extends Phaser.Scene {
           sprite.setTexture(tex);
         }
 
+        sprite.setScale(d.type === 'gear' ? .62 : 1);
+        sprite.setTint(d.type === 'gear' ? gearColors[d.value] : 0xffffff);
         const bob = Math.sin(game.clock * 4.5 + d.id) * 2.2;
         sprite.setPosition(d.x, d.y + bob);
         sprite.setDepth(d.y - 12);
@@ -541,7 +571,7 @@ export class BattleScene extends Phaser.Scene {
     flipX = false,
     blendMode: Phaser.BlendModes | number = Phaser.BlendModes.NORMAL
   ) {
-    if (!this.anims.exists(animKey)) return;
+    if (!this.anims.exists(animKey) || this.fxSprites.size >= 42) return;
     const fx = this.trackSprite(this.add.sprite(x, y, texture));
     fx.setOrigin(0.5, 0.5);
     fx.setDepth(depth);
@@ -683,6 +713,7 @@ export class BattleScene extends Phaser.Scene {
     };
 
     const fxTable: Record<string, { tex: string; anim: string; dy?: number; dDepth?: number; scale?: number; followPlayer?: boolean }> = {
+      lion_roar: {tex:'fx_3303',anim:'fx_lion_roar_anim',scale:1.1},
       level_up: { tex: 'level_up', anim: 'fx_level_up_anim', dy: -40, dDepth: 100, scale: 1.2 },
       lightning: { tex: 'fx_2010', anim: 'fx_lightning_anim', dy: 14, dDepth: 200, scale: 0.85 },
       hell_thunder: { tex: 'fx_2003', anim: 'fx_hell_thunder_anim', dy: -6, dDepth: 15, scale: 1.0, followPlayer: true },
@@ -709,8 +740,14 @@ export class BattleScene extends Phaser.Scene {
       const lvl = e.level || 1;
       const levelMult = lvl === 4 ? 2.15 : (lvl === 3 ? 1.65 : (lvl === 2 ? 1.3 : 1.0));
 
-      if (lvl >= 4) {
-        this.cameras.main.shake(220, 0.006);
+      if (e.type==='fireball' && e.targetX!==undefined && e.targetY!==undefined) {
+        const bolt=this.trackSprite(this.add.sprite(e.x,e.y,'fx_2001').setDepth(2000));
+        bolt.play('fx_fireball_track_anim');
+        this.trackTween({targets:bolt,x:e.targetX,y:e.targetY,duration:160,onComplete:()=>{
+          this.spawnSkillEffect(bolt.x,bolt.y,'fx_2001','fx_fireball_anim',2000,.8+lvl*.12);
+          bolt.destroy();
+        }});
+        continue;
       }
 
       if (e.type === 'lightning' && !castPlayedThisTick.has('lightning')) {
@@ -811,19 +848,18 @@ export class BattleScene extends Phaser.Scene {
     const gfx = this.uiGraphics;
     gfx.clear();
 
-    // 1. Glowing ground aura circle under feet of Elites and Boss
-    for (const m of game.monsters) {
-      if (m.isBoss || m.isElite) {
-        const auraRadius = (m.isBoss ? 82 : 46) + Math.sin(game.clock * 5) * 5;
-        const auraColor = m.isBoss ? 0xff0033 : 0xff9900;
-        gfx.lineStyle(m.isBoss ? 3.5 : 2.5, auraColor, 0.9);
-        gfx.strokeCircle(m.x, m.y + (m.isBoss ? 35 : 24), auraRadius);
-        gfx.fillStyle(auraColor, m.isBoss ? 0.22 : 0.16);
-        gfx.fillCircle(m.x, m.y + (m.isBoss ? 35 : 24), auraRadius);
-
-        // Inner glowing ring
-        gfx.lineStyle(1.5, 0xffe58f, 0.7);
-        gfx.strokeCircle(m.x, m.y + (m.isBoss ? 35 : 24), auraRadius * 0.65);
+    const ground = this.groundFx;
+    ground.clear();
+    for (const zone of game.dangers) {
+      const remaining = zone.impact-game.clock;
+      ground.fillStyle(zone.color,remaining <= 0 ? .72 : .18+.22*Math.max(0,1-remaining));
+      if (!zone.inner) ground.fillCircle(zone.x,zone.y,zone.radius);
+      else {
+        // Use thick arcs so the safe center stays transparent in Canvas and WebGL.
+        ground.lineStyle(zone.radius-zone.inner,zone.color,remaining <= 0 ? .72 : .34);
+        ground.beginPath();
+        ground.arc(zone.x,zone.y,(zone.radius+zone.inner)/2,0,Math.PI*2);
+        ground.strokePath();
       }
     }
 
@@ -975,12 +1011,16 @@ export class BattleScene extends Phaser.Scene {
     if (this.anims.exists(animKey)) return;
     if (!this.textures.exists(atlasKey)) return;
     const tex = this.textures.get(atlasKey);
-    const frameNames = tex.getFrameNames().filter(f => f.startsWith(prefix)).sort();
-    if (frameNames.length === 0) return;
+    const frames = tex.getFrameNames().filter(f=>f.startsWith(prefix)).map(frame=>({key:atlasKey,frame}));
+    if (atlasKey === 'fx_1102' && this.textures.exists('fx_1102_more')) {
+      frames.push(...this.textures.get('fx_1102_more').getFrameNames().filter(f=>f.startsWith(prefix)).map(frame=>({key:'fx_1102_more',frame})));
+    }
+    frames.sort((a,b)=>a.frame.localeCompare(b.frame));
+    if (!frames.length) return;
 
     this.anims.create({
       key: animKey,
-      frames: frameNames.map(f => ({ key: atlasKey, frame: f })),
+      frames,
       frameRate,
       repeat
     });
@@ -1024,6 +1064,8 @@ export class BattleScene extends Phaser.Scene {
     this.createAnimFromAtlas('fx_lightning_anim', 'fx_2010', '2010/hit/', 16, 0);
     this.createAnimFromAtlas('fx_lightning_cast_anim', 'fx_2010', '2010/casting/', 15, 0);
     this.createAnimFromAtlas('fx_ice_roar_anim', 'fx_2008', '2008/hit/', 16, 0);
+    this.createAnimFromAtlas('fx_lion_roar_anim','fx_3303','3303/casting/',16,0);
+    this.createAnimFromAtlas('fx_fireball_track_anim','fx_2001','2001/track/',18,-1);
     this.createAnimFromAtlas('fx_fireball_anim', 'fx_2001', '2001/hit/', 15, 0);
     this.createAnimFromAtlas('fx_lightning_strike_anim', 'fx_2005', '2005/hit/', 16, 0);
     this.createAnimFromAtlas('fx_hellfire_anim', 'fx_2004', '2004/loop/', 15, 0);

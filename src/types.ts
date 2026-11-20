@@ -129,11 +129,12 @@ export interface MinionEntity {
 
 export interface DropEntity {
   id: number;
-  type: 'exp' | 'gold' | 'potion' | 'chest';
+  type: 'exp' | 'gold' | 'potion' | 'gear';
   x: number;
   y: number;
   value: number;
   tier?: 1 | 2 | 3;
+  slot?: 'weapon' | 'armor';
 }
 
 export interface DamageNumber {
@@ -174,6 +175,7 @@ export interface EffectEvent {
     | 'thunder_sword'
     | 'heal_spell'
     | 'summon_skeleton'
+    | 'lion_roar'
     | 'ghost_fire_curse';
   x: number;
   y: number;
