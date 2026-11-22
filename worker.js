@@ -1,4 +1,4 @@
-const BASE = '/woool-survivor-mobile';
+const BASE = '/woool-survivor-mobile/next';
 
 export default {
   async fetch(request, env) {

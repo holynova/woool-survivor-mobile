@@ -48,15 +48,20 @@ export function planBossCast(chapter:string, boss:MonsterEntity, player:Point, t
     });
     return {kind:'summon',name:kit.special,releaseAt:clock+1.25,points,species:kit.minion};
   }
+  return planCharge(boss,player,terrain,clock,kit.special);
+}
+
+export function planCharge(boss:MonsterEntity,player:Point,terrain:Terrain,clock:number,name:string,reachLimit=260):BossCast {
+  const angle=Math.atan2(player.y-boss.y,player.x-boss.x);
   // Clip the locked lane to solid scenery before displaying it.
   const from={x:boss.x,y:boss.y}, to={...from};
-  const reach=Math.min(260,Math.hypot(player.x-boss.x,player.y-boss.y)+55);
+  const reach=Math.min(reachLimit,Math.hypot(player.x-boss.x,player.y-boss.y)+55);
   for(let d=5;d<=reach;d+=5){
     const p={x:from.x+Math.cos(angle)*d,y:from.y+Math.sin(angle)*d};
     if(p.x<70 || p.x>WORLD_WIDTH-70 || p.y<70 || p.y>WORLD_HEIGHT-70 || terrain.settle(p,monsterFootprint(boss))) break;
     Object.assign(to,p);
   }
-  return {kind:'charge', name:kit.special, releaseAt:clock+1.1, from,to,hit:false};
+  return {kind:'charge', name, releaseAt:clock+1.1, from,to,hit:false};
 }
 
 export function stunMonster(m:MonsterEntity,clock:number,duration:number) {

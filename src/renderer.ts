@@ -3,13 +3,17 @@ import {WOOWL_MONSTERS} from './config/curves';
 import {WOOWL_SKILLS} from './config/skills';
 import { bossKits, CHARGE_RADIUS } from './boss';
 import { missiles } from './ranged';
+import { bossPose } from './bossPose';
 import Phaser from 'phaser';
 import { game, calcDirection, WORLD_WIDTH, WORLD_HEIGHT } from './game';
 import type { EffectEvent, FlightKind, MonsterEntity, MinionEntity, DropEntity, DamageNumber } from './types';
-import { handAnchor } from './config/handAnchors';
+import { gearTier, registerArmorAnimations } from './combatArt';
 import { gearInfo, gearColors } from './config/equipment';
 import { assetUrl } from './utils';
 import { buildField, preloadField } from './battlefield';
+import { FieldAssets } from './fieldAssets';
+import { reducedMotion } from './motion';
+import { preloadEquipmentArt } from './combatArt';
 import { FOOT_OFFSET } from './terrain';
 
 // Logical scale and original foot pivot in the walk rig, independent of atlas density.
@@ -45,6 +49,7 @@ export class BattleScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Sprite;
   private weapon!: Phaser.GameObjects.Image;
   private groundFx!: Phaser.GameObjects.Graphics;
+  private dangerRings: Phaser.GameObjects.Image[] = [];
   private playerShadow!: Phaser.GameObjects.Graphics;
   private playerShieldSprite!: Phaser.GameObjects.Sprite;
 
@@ -86,6 +91,7 @@ export class BattleScene extends Phaser.Scene {
 
   private pixelRatio=1;
   private updateCover!: ReturnType<typeof buildField>;
+  private stagedAssets!: FieldAssets;
   private currentChapterId = '';
   private currentHeroClass = '';
 
@@ -94,37 +100,32 @@ export class BattleScene extends Phaser.Scene {
   }
 
   preload() {
-    const chapter=WOOWL_CHAPTERS[game.chapterId];
-    this.load.on('progress', (value:number)=>this.game.events.emit('field-progress',value));
-    this.load.on('loaderror', ()=>this.game.events.emit('field-error'));
+    const progress=(value:number)=>this.game.events.emit('field-progress',value);
+    this.load.on('progress',progress);
+    this.load.once('complete',()=>this.load.off('progress',progress));
+    const failed=()=>this.game.events.emit('field-error');
+    this.load.on('loaderror',failed);
+    this.load.once('complete',()=>this.load.off('loaderror',failed));
     preloadField(this,game.terrain);
     this.load.image('healing-potion',assetUrl('assets/woool/items/healing_potion.webp'));
+    this.load.image('coin-string',assetUrl('assets/woool/items/coin_string.webp'));
     for(let tier=1;tier<=3;tier++) this.load.image('coin_'+tier, assetUrl('assets/woool/items/gold_coin_'+tier+'.png'));
     for (const slot of ['weapon','armor'] as const) {
-      const icons = new Set([0,1].map(rank => gearInfo(game.heroClass,slot,rank).icon));
+      const icons = new Set([0,1,3].map(rank => gearInfo(game.heroClass,slot,rank).icon));
       for (const icon of icons) this.load.image('gear_'+icon,assetUrl('assets/woool/items/'+icon+'.png'));
     }
     const atlas=(key:string, path:string)=>this.load.atlas(key,assetUrl(path+'@0.png'),assetUrl(path+'@0.json'));
     const hero=HERO_ATLAS_MAP[game.heroClass];
     atlas(hero,'assets/woool/heroes/r_'+hero.slice(5));
-    const monsters = new Set(chapter.monsterPool.map(monster => WOOWL_MONSTERS[monster.typeId].spriteKey));
-    for (const monster of game.monsters) if (monster.spriteKey && !monster.isBoss) monsters.add(monster.spriteKey);
-    monsters.add(WOOWL_MONSTERS[chapter.rangedType].spriteKey);
-    for (const id of chapter.lordTypes) monsters.add(WOOWL_MONSTERS[id].spriteKey);
-    const bossId=chapter.bossSpriteKey;
-    this.load.atlas('boss_'+bossId,assetUrl('assets/woool/bosses/'+bossId+'.webp'),assetUrl('assets/woool/bosses/'+bossId+'.json'));
-    if (game.heroClass==='taoist') for (const summon of ['20081','20082','20085']) monsters.add(summon);
-    for (const id of monsters) atlas('m_'+id,'assets/woool/monsters/m_'+id);
-    atlas('level_up','assets/woool/effects/level_up');
-    const effects=new Set(Object.values(WOOWL_SKILLS).filter(s=>s.classType===game.heroClass).map(s=>s.iconId));
-    if(game.heroClass==='warrior') this.load.atlas('fx_1102_more',assetUrl('assets/woool/skills_fx/s_1102@1.png'),assetUrl('assets/woool/skills_fx/s_1102@1.json'));
-    if(game.heroClass==='wizard') effects.add(2202);
-    if(game.heroClass==='taoist'){ effects.add(2001); effects.add(1004); } // Summon fire and axe impacts.
-    for(const id of effects) atlas('fx_'+id,'assets/woool/skills_fx/s_'+id);
+    preloadEquipmentArt(this,game.heroClass);
+    this.stagedAssets=new FieldAssets(this,()=>this.registerAllAnimations());
+    this.stagedAssets.preload();
+    this.load.atlas('level_up',assetUrl('assets/woool/effects/level_up@0.webp'),assetUrl('assets/woool/effects/level_up@0.json'));
   }
 
   create() {
     this.registerAllAnimations();
+    this.stagedAssets.start();
 
     this.currentChapterId=game.chapterId;
     this.updateCover=buildField(this,game.terrain);
@@ -133,7 +134,7 @@ export class BattleScene extends Phaser.Scene {
 
 
     // 4. Graphics Layers
-    this.groundFx = this.add.graphics().setDepth(4);
+    this.groundFx = this.add.graphics().setPosition(0,FOOT_OFFSET).setDepth(4);
     this.weapon = this.add.image(game.player.x,game.player.y,'gear_5010101').setOrigin(.79,.80).setScale(.72);
     this.playerShadow = this.add.graphics().setDepth(5);
     this.fxGraphics = this.add.graphics().setDepth(2000);
@@ -206,7 +207,7 @@ export class BattleScene extends Phaser.Scene {
     this.input.on('gameout',resetJoystick);
     this.game.events.on('clear-drag',resetJoystick);
     this.cameras.main.centerOn(game.player.x, game.player.y);
-    this.updateCover(game.player,game.getActiveBoss());
+    this.updateCover(game.player,game.monsters,game.dangers);
     this.syncPlayer();
     this.syncMonsters();
     this.syncMinions();
@@ -216,7 +217,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    if (game.phase !== 'battle') return;
+    if (!this.stagedAssets.update() || game.phase !== 'battle') return;
     const dt = Math.min(delta / 1000,.08);
 
     // Handle Input
@@ -238,7 +239,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Camera shake on high-threat Boss / Elite arrival
     if (game.alertBanner && game.alertBanner.duration > game.alertBanner.maxDuration - 0.15) {
-      if (this.lastAlertDuration !== game.alertBanner.duration) {
+      if (!reducedMotion() && this.lastAlertDuration !== game.alertBanner.duration) {
         this.lastAlertDuration = game.alertBanner.duration;
         this.cameras.main.shake(game.alertBanner.type === 'boss' ? 550 : 320, game.alertBanner.type === 'boss' ? 0.012 : 0.007);
       }
@@ -252,7 +253,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // Sync Player Visuals
-    this.updateCover(game.player,game.getActiveBoss());
+    this.updateCover(game.player,game.monsters,game.dangers);
     this.syncPlayer();
 
     // Sync Monsters (with giant Elites, Supreme Boss & Glowing under-foot auras)
@@ -348,26 +349,20 @@ export class BattleScene extends Phaser.Scene {
     const heroAtlas = HERO_ATLAS_MAP[this.currentHeroClass] || 'hero_5120503';
     const { dirDigit, flipX } = getDirInfo(game.player.dir);
     this.playerSprite.setFlipX(flipX);
-    const animKey = game.player.moving
-      ? `${heroAtlas}_walk_${dirDigit}`
-      : `${heroAtlas}_idle_${dirDigit}`;
-
-    if (this.anims.exists(animKey)) {
-      if (!this.playerSprite.anims.isPlaying || this.playerSprite.anims.currentAnim?.key !== animKey) {
-        this.playerSprite.play(animKey);
-      }
+    const armorTier=gearTier(game.equipment.armor), action=game.player.moving ? 'run' : 'stand';
+    const animKey = armorTier
+      ? 'outfit_'+this.currentHeroClass+'_r_'+armorTier+'_'+action+'_'+dirDigit
+      : heroAtlas+(game.player.moving ? '_walk_' : '_idle_')+dirDigit;
+    if (this.anims.exists(animKey) && this.playerSprite.anims.currentAnim?.key !== animKey) {
+      this.playerSprite.play(animKey);
     }
-
-    const rank = game.equipment.weapon;
-    const weapon = gearInfo(game.heroClass,'weapon',rank);
-    const [handX,handY] = handAnchor(dirDigit,String(this.playerSprite.frame.name),game.player.moving);
-    const bladePointsLeft = game.player.dir >= 4;
-    this.weapon.setTexture('gear_'+weapon.icon).setTint(gearColors[rank]).setFlipX(!bladePointsLeft)
-      .setOrigin(bladePointsLeft ? .8 : .2,.83)
-      .setPosition(game.player.x+(flipX ? -handX : handX),game.player.y+handY)
-      .setDepth(game.player.y+(dirDigit < 2 ? -1 : 1));
-    const armorColor=gearColors[game.equipment.armor];
-    this.playerSprite.setTint(0xffffff,0xffffff,armorColor,armorColor);
+    this.playerSprite.clearTint();
+    const pose=String(this.playerSprite.frame.name).split('/').pop();
+    const weaponFrame='w'+gearTier(game.equipment.weapon)+'/'+action+'/'+pose;
+    this.weapon.setTexture('outfit_'+this.currentHeroClass+'_w',weaponFrame)
+      .setOrigin(.5,.5).setScale(1).setFlipX(flipX).clearTint()
+      .setPosition(game.player.x,game.player.y)
+      .setDepth(game.player.y+(dirDigit<2 ? -1 : 1));
 
     // Flash white when invulnerable
     if (game.player.invulnerableTime > 0) {
@@ -382,7 +377,7 @@ export class BattleScene extends Phaser.Scene {
     // Player Shadow
     this.playerShadow.clear();
     this.playerShadow.fillStyle(0x000000, 0.4);
-    this.playerShadow.fillEllipse(game.player.x, game.player.y + 24, 46, 16);
+    this.playerShadow.fillEllipse(game.player.x, game.player.y + FOOT_OFFSET, 46, 16);
 
     // Active Shield Visual
     if (game.clock < game.player.shieldUntil) {
@@ -409,25 +404,34 @@ export class BattleScene extends Phaser.Scene {
         sprite = this.monsterPool.pop() || this.add.sprite(m.x, m.y, '');
         sprite.setVisible(true);
         this.monsterSprites.set(m.id, sprite);
-
-        // Screen shake upon Boss or Milestone Elite arrival
-        if (m.isBoss) {
-          this.cameras.main.shake(650, 0.015);
-        } else if (m.isElite && (m.scale || 1) >= 1.9) {
-          this.cameras.main.shake(350, 0.008);
-        }
+        sprite.setData('strikeAt',-Infinity);
+        sprite.setData('strikeEnd',-Infinity);
       }
 
       const rig=m.isBoss ? bossRig[m.spriteKey!] : undefined;
       const actorY=rig ? m.y+FOOT_OFFSET-rig.foot*rig.scale : m.y;
       const traveled=Math.hypot(sprite.x-m.x,sprite.y-actorY);
-      sprite.setPosition(m.x, actorY);
+      sprite.setPosition(m.x, actorY).setRotation(0);
       sprite.setDepth(m.y);
 
       const atlasKey = (rig ? 'boss_' : 'm_')+(m.spriteKey || '20081');
-      const { dirDigit, flipX } = getDirInfo(m.dir ?? 4);
+      const cast=m.isBoss ? m.bossCast : undefined;
+      let facing=m.dir ?? 4;
+      if(cast){
+        facing=cast.kind==='volley' ? calcDirection(Math.cos(cast.angle),Math.sin(cast.angle))
+          : cast.kind==='charge' ? calcDirection(cast.to.x-cast.from.x,cast.to.y-cast.from.y)
+          : calcDirection(game.player.x-m.x,game.player.y-m.y);
+        const nextImpact=cast.kind==='ground' ? game.dangers.find(z=>z.owner===m.id && z.impact>=game.clock-.12)?.impact : undefined;
+        sprite.setData('strikeAt',nextImpact ?? cast.releaseAt);
+        sprite.setData('strikeEnd',cast.releaseAt+(cast.kind==='charge' ? .52 : 0)+.26);
+        sprite.setData('strikeFacing',facing);
+        sprite.setData('strikeKind',cast.kind);
+      }
+      const casting=m.isBoss && game.clock<sprite.getData('strikeEnd');
+      if(casting) facing=sprite.getData('strikeFacing');
+      const { dirDigit, flipX } = getDirInfo(facing);
       const singleView = !this.anims.exists(atlasKey+'_walk_0');
-      sprite.setFlipX(singleView ? (m.dir ?? 4) < 4 : flipX);
+      sprite.setFlipX(singleView ? facing < 4 : flipX);
 
       // Scale & Imposing deterring aura
       const finalScale = rig?.scale ?? m.scale ?? 1;
@@ -458,6 +462,21 @@ export class BattleScene extends Phaser.Scene {
         sprite.clearTint();
       }
 
+      if(casting){
+        const attackKey='bossCast_'+m.spriteKey+'_attack_'+(singleView ? 3 : dirDigit);
+        if(this.anims.exists(attackKey)){
+          const frames=this.anims.get(attackKey).frames;
+          const impact=sprite.getData('strikeAt'), end=sprite.getData('strikeEnd');
+          const posed=bossPose(sprite.getData('strikeKind'),game.clock,impact,end-.26,frames.length,facing,rig!.foot*finalScale,m.spriteKey);
+          const pose=frames[posed.frame];
+          sprite.anims.stop();
+          sprite.setTexture(pose.textureKey,pose.textureFrame)
+            .setScale(finalScale/2*posed.width,finalScale/2*posed.height)
+            .setRotation(posed.angle)
+            .setPosition(m.x+posed.xOffset,m.y+FOOT_OFFSET+posed.yOffset);
+          continue;
+        }
+      }
       const animKey = `${atlasKey}_walk_${singleView ? 3 : dirDigit}`;
       if (this.anims.exists(animKey)) {
         if (!sprite.anims.isPlaying || sprite.anims.currentAnim?.key !== animKey) {
@@ -522,7 +541,7 @@ export class BattleScene extends Phaser.Scene {
       if (this.cameras.main.worldView.contains(d.x,d.y)) {
         activeDropIds.add(d.id);
         let sprite = this.dropSprites.get(d.id);
-        const tex = d.type === 'potion' ? 'healing-potion' : d.type === 'gear' && d.slot ? 'gear_'+gearInfo(game.heroClass,d.slot,d.value).icon : d.tier === 3 ? 'coin_3' : (d.tier === 2 ? 'coin_2' : 'coin_1');
+        const tex = d.type === 'gold' ? 'coin-string' : d.type === 'potion' ? 'healing-potion' : d.type === 'gear' && d.slot ? 'gear_'+gearInfo(game.heroClass,d.slot,d.value).icon : d.tier === 3 ? 'coin_3' : (d.tier === 2 ? 'coin_2' : 'coin_1');
 
         if (!sprite) {
           sprite = this.dropPool.pop() || this.add.sprite(d.x, d.y, tex);
@@ -867,18 +886,34 @@ export class BattleScene extends Phaser.Scene {
 
     const ground = this.groundFx;
     ground.clear();
+    let ringCount=0;
     for (const zone of game.dangers) {
-      const remaining = zone.impact-game.clock;
-      ground.fillStyle(zone.color,remaining <= 0 ? .72 : .18+.22*Math.max(0,1-remaining));
-      if (!zone.inner) ground.fillCircle(zone.x,zone.y,zone.radius);
-      else {
-        // Use thick arcs so the safe center stays transparent in Canvas and WebGL.
-        ground.lineStyle(zone.radius-zone.inner,zone.color,remaining <= 0 ? .72 : .34);
-        ground.beginPath();
-        ground.arc(zone.x,zone.y,(zone.radius+zone.inner)/2,0,Math.PI*2);
-        ground.strokePath();
+      const remaining=zone.impact-game.clock;
+      const alpha=remaining<=0 ? .72 : .16+.26*Phaser.Math.Clamp(1-remaining/1.5,0,1);
+      if (!zone.inner) {
+        ground.fillStyle(zone.color,alpha).fillCircle(zone.x,zone.y,zone.radius);
+        continue;
       }
+      // A single transparent texture avoids overlapping stroke triangles and
+      // radial seams on WebGL. The circular hole follows the exact hit radius.
+      const key='danger-ring-'+zone.radius+'-'+zone.inner+'-'+zone.color;
+      if (!this.textures.exists(key)) {
+        const centre=zone.radius+1;
+        const texture=this.textures.createCanvas(key,centre*2,centre*2)!;
+        const ctx=texture.context;
+        ctx.fillStyle='#'+zone.color.toString(16).padStart(6,'0');
+        ctx.beginPath();
+        ctx.arc(centre,centre,zone.radius,0,2*Math.PI);
+        ctx.moveTo(centre+zone.inner,centre);
+        ctx.arc(centre,centre,zone.inner,0,2*Math.PI,true);
+        ctx.fill('evenodd');
+        texture.refresh();
+      }
+      const ring=this.dangerRings[ringCount]??=this.add.image(0,0,key).setDepth(4);
+      ring.setTexture(key).setPosition(zone.x,zone.y+FOOT_OFFSET).setAlpha(alpha).setVisible(true);
+      ringCount++;
     }
+    for(let i=ringCount;i<this.dangerRings.length;i++)this.dangerRings[i].setVisible(false);
 
     const fx = this.fxGraphics;
     fx.clear();
@@ -1105,6 +1140,8 @@ export class BattleScene extends Phaser.Scene {
       }
     }
 
+    registerArmorAnimations(this,game.heroClass);
+
     // 2. Monster Walking Animations
     for (const atlasKey of this.textures.getTextureKeys().filter(key => key.startsWith('m_') || key.startsWith('boss_'))) {
       const id = atlasKey.slice(atlasKey.indexOf('_')+1);
@@ -1112,6 +1149,11 @@ export class BattleScene extends Phaser.Scene {
         this.createAnimFromAtlas(`${atlasKey}_walk_${dir}`, atlasKey, `${id}/walk/${dir}`, 8, -1);
         this.createAnimFromAtlas(`${atlasKey}_idle_${dir}`, atlasKey, `${id}/stand/${dir}`, 4, -1);
       }
+    }
+
+    for (const key of this.textures.getTextureKeys().filter(k=>k.startsWith('bossCast_'))) {
+      const id=key.slice('bossCast_'.length);
+      for(let dir=0;dir<=4;dir++)this.createAnimFromAtlas(key+'_attack_'+dir,key,id+'/attack/'+dir,10,0);
     }
 
     // 3. Directional Slashes & Dash

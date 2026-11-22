@@ -1,13 +1,15 @@
 # 传奇世界幸存者 · 移动版
 
-[手机开玩 / Play](https://xiaosang.cc/woool-survivor-mobile/) · [GitHub](https://github.com/holynova/woool-survivor-mobile) · [玩法与操作](PLAY-GUIDE.md)
+[1.1 手机开玩 / Play](https://xiaosang.cc/woool-survivor-mobile/next/) · [1.0.10 旧版](https://xiaosang.cc/woool-survivor-mobile/) · [玩法指南](PLAY-GUIDE.md) · [GitHub](https://github.com/holynova/woool-survivor-mobile)
 
-选择战士、法师或道士，单指拖动，在八章战役中迎战精英，最终首领在 10:00 出场。升级时三选一，主修技能到五级可解锁专属觉醒。战局自动存档，可随时回城再战。
+战士、法师、道士，八章十分钟守关。单指拖动走位，角色自动出招。将主修技能升至五级觉醒，五分钟后选定流派，击败章节首领。新版首次打开时可读取本浏览器已有的旧版进度，之后单独存档。
 
-A portrait survival game with three classes, eight chapters and four difficulty settings. Drag to move, draft skills as you level up and defeat each chapter’s boss. Your progress is saved in this browser.
+直接体验两场首领战。点击「试招」从 9:58 入场，试玩独立于正式存档。[中州屋角 · 铁甲刀卫](https://xiaosang.cc/woool-survivor-mobile/next/?trial=guard) · [通天塔 · 通天教主](https://xiaosang.cc/woool-survivor-mobile/next/?trial=tower)
 
-<img src="screenshots/campaign/boss.png" width="260" alt="手机实战画面 · Chapter boss">
-<img src="screenshots/qr.png" width="144" alt="扫码进入游戏 · Scan to play">
+A mobile survival game with three classes and eight chapters. Drag to move, awaken skills at rank five, choose a build path and face the boss at ten minutes. The two encounter trials use temporary progress.
+
+<img src="screenshots/v1.1/chapters.webp" width="440" alt="1.1 八章移动战斗截图 · Eight chapters in battle">
+<img src="screenshots/qr.png" width="144" alt="扫码进入 1.1 · Scan to play 1.1">
 
 ## 本地运行 / Development
 
@@ -20,7 +22,7 @@ npm run dev
 
 ## 测试与发布 / Test and deploy
 
-从 main 构建，以独立 Worker 服务作品集子路径。部署需要对应的 Cloudflare 账户权限。
+1.1 分支 `gameplay/readability-1.1` 使用独立的 `woool-survivor-mobile-next` Worker，服务 `/woool-survivor-mobile/next/`。
 
 ```sh
 npm test
@@ -28,4 +30,4 @@ npm run build
 npx wrangler@4.128.0 deploy --config wrangler.jsonc
 ```
 
-美术、音频与战斗系统来源见[玩法指南](PLAY-GUIDE.md#来源)。
+素材出处见[来源](PLAY-GUIDE.md#来源)。

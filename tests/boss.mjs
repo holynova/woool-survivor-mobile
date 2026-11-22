@@ -8,6 +8,52 @@ try {
   const {WOOWL_CHAPTERS}=await server.ssrLoadModule('/src/config/chapters.ts');
   const {WOOWL_SKILLS}=await server.ssrLoadModule('/src/config/skills.ts');
   const {bossKits,stunMonster,slowMonster,planBossCast,CHARGE_TIME}=await server.ssrLoadModule('/src/boss.ts');
+  const {gearInfo}=await server.ssrLoadModule('/src/config/equipment.ts');
+  for(const role of ['warrior','wizard','taoist'])for(const layer of ['r','w']){
+    const slot=layer==='r'?'armor':'weapon';
+    for(const rank of [0,1,2,3,4]) {
+      const item=gearInfo(role,slot,rank);
+      readFileSync('public/assets/woool/items/'+item.icon+'.png');
+    }
+    const icons=[0,1,3].map(rank=>gearInfo(role,slot,rank).icon);
+    assert.equal(new Set(icons).size,3,role+' '+slot+' distinct icons');
+    const {frames}=JSON.parse(readFileSync('public/assets/woool/equipment/'+role+'-'+layer+'.json'));
+    for(const tier of layer==='r'?[1,2]:[0,1,2])for(let dir=0;dir<5;dir++){
+      for(const [action,steps] of [['stand',4],['run',12]]){
+        for(let step=0;step<steps;step++){
+          const pose=layer+tier+'/'+action+'/'+dir+String(step).padStart(4,'0')+'.png';
+          assert.deepEqual(frames[pose]?.sourceSize,{w:512,h:512},role+' synchronised body/weapon '+pose);
+        }
+      }
+    }
+  }
+  const {bossPose}=await server.ssrLoadModule('/src/bossPose.ts');
+  const impact=10;
+  const kinds=['ground','volley','charge','summon'];
+  for(const count of [4,6,7,8]){
+    const tells=kinds.map(k=>bossPose(k,impact-.10,impact,impact,count,2,83));
+    const pontiffAim=bossPose('volley',impact-.1,impact,impact,8,3,21,'sky_pontiff');
+    const pontiffSummon=bossPose('summon',impact-.1,impact,impact,8,3,21,'sky_pontiff');
+    assert.deepEqual([pontiffAim.frame,pontiffSummon.frame],[4,2],'pontiff levels blade for bolts, raises it overhead to summon');
+    assert.equal(new Set(tells.map(p=>[p.frame,p.width,p.height,p.angle].join('/'))).size,4);
+    assert.ok(tells[2].height<.85 && tells[2].angle>0,'charge lowers weight toward target');
+    assert.ok(tells[3].height>1.10 && tells[3].frame===Math.round(.34*(count-1)),'summon raises body and holds high frame');
+    assert.deepEqual(tells[1],bossPose('volley',impact-.25,impact,impact,count,2,83),'aim remains steady before launch');
+    for(const dir of [0,1,2,3,4,5,6,7])for(const kind of kinds){
+      const recover=impact+(kind==='charge'?.52:0);
+      const windup=bossPose(kind,impact-.001,impact,recover,count,dir,83);
+      const release=bossPose(kind,impact,impact,recover,count,dir,83);
+      assert.notDeepEqual(windup,release,kind+' release starts on hit tick');
+      for(const time of [impact-.8,impact-.1,impact,recover+.10,recover+.26]){
+        const pose=bossPose(kind,time,impact,recover,count,dir,83);
+        assert.ok(pose.frame>=0 && pose.frame<count);
+        assert.ok(Math.abs(pose.xOffset-Math.sin(pose.angle)*83*pose.height)<1e-8);
+        assert.ok(Math.abs(pose.yOffset+Math.cos(pose.angle)*83*pose.height)<1e-8);
+      }
+      const done=bossPose(kind,recover+.27,impact,recover,count,dir,83);
+      assert.deepEqual([done.width,done.height,done.angle+0],[1,1,0]);
+    }
+  }
   function encounter(chapter) {
     const g=new GameEngine();
     g.start('wizard',chapter,'standard');
@@ -20,19 +66,20 @@ try {
   for(const chapter of Object.keys(WOOWL_CHAPTERS)){
     const key=WOOWL_CHAPTERS[chapter].bossSpriteKey;
     const frames=path=>JSON.parse(readFileSync(new URL('../public/assets/woool/'+path,import.meta.url))).frames;
-    const original=frames('monsters/m_'+key+'@0.json');
-    const hd=frames('bosses/'+key+'.json');
-    assert.deepEqual(Object.keys(hd).sort(),Object.keys(original).filter(k=>k.includes('/walk/')).sort(),key+' animations');
-    const packed=[];
-    for(const [name,spec] of Object.entries(hd)){
-      const source=original[name], r=spec.frame;
-      for(const prop of ['sourceSize','spriteSourceSize']) {
-        for(const [axis,value] of Object.entries(source[prop])) assert.equal(spec[prop][axis],value*2,name+' '+axis);
+    const archived=['sky_pontiff','hydra_king'].includes(key);
+    const dirs=archived ? [3] : [0,1,2,3,4];
+    for(const [suffix,action] of [['','walk'],['-cast','attack']]){
+      const hd=frames('bosses/'+key+suffix+'.json');
+      for(const dir of dirs)assert.ok(Object.keys(hd).filter(n=>n.startsWith(key+'/'+action+'/'+dir)).length>=4,key+' '+action+' '+dir);
+      const packed=[];
+      for(const [name,spec] of Object.entries(hd)){
+        const r=spec.frame, trim=spec.spriteSourceSize;
+        assert.equal(r.w,trim.w);assert.equal(r.h,trim.h);
+        assert.ok(trim.x>=0 && trim.y>=0 && trim.x+r.w<=spec.sourceSize.w && trim.y+r.h<=spec.sourceSize.h,name+' logical bound');
+        assert.ok(r.x>=2 && r.y>=2 && r.x+r.w+2<=2048 && r.y+r.h+2<=2048);
+        assert.ok(packed.every(a=>(r.x===a.x && r.y===a.y && r.w===a.w && r.h===a.h) || r.x>=a.x+a.w+4 || a.x>=r.x+r.w+4 || r.y>=a.y+a.h+4 || a.y>=r.y+r.h+4),name+' atlas bleed');
+        packed.push(r);
       }
-      assert.equal(r.w,source.frame.w*2);assert.equal(r.h,source.frame.h*2);
-      assert.ok(r.x>=2 && r.y>=2 && r.x+r.w+2<=2048 && r.y+r.h+2<=2048);
-      assert.ok(packed.every(a=>r.x>=a.x+a.w+4 || a.x>=r.x+r.w+4 || r.y>=a.y+a.h+4 || a.y>=r.y+r.h+4),name+' atlas bleed');
-      packed.push(r);
     }
     const kit=bossKits[chapter];
     const {g,boss}=encounter(chapter);

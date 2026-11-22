@@ -11,7 +11,7 @@ import type {
   DropEntity,
   DamageNumber,
   EffectEvent, Flight, FlightKind,
-  AlertBanner
+  AlertBanner, DeathCause, RunMetrics
 } from './types';
 import { WOOWL_SKILLS, WOOWL_PASSIVES } from './config/skills';
 import { WOOWL_CHAPTERS } from './config/chapters';
@@ -23,8 +23,8 @@ import {
   evaluateCurveState
 } from './config/curves';
 import { missiles, FIRST_RANGED_WAVE, rangedWave, type EnemyShot, type MissileKind } from './ranged';
-import { bossKits, CHARGE_RADIUS, CHARGE_TIME, enraged, planBossCast, slowMonster, stunMonster } from './boss';
-import { attackZones, type DangerZone } from './encounters';
+import { bossKits, CHARGE_RADIUS, CHARGE_TIME, enraged, planBossCast, planCharge, slowMonster, stunMonster } from './boss';
+import { chapterLessons, attackZones, type DangerZone } from './encounters';
 import { gearInfo, freshTraining, type Equipment, type Training } from './config/equipment';
 import { sound } from './audio';
 
@@ -33,6 +33,14 @@ export { WORLD_WIDTH, WORLD_HEIGHT } from './terrain';
 
 const RUN_REROLLS = 3;
 const SWAP_INTERVAL = 4;
+const paths = {
+  hunter: {title:'破军',description:'专攻精英和首领，对其伤害提高 25%。',iconId:2010210},
+  skirmisher: {title:'游斗',description:'移动速度提高 12%，技能冷却缩短 8%。',iconId:2030410},
+  guardian: {title:'固守',description:'受伤减少 15%，血瓶恢复量提高一半。',iconId:2030310}
+};
+type PathId = keyof typeof paths;
+const freshMetrics=():RunMetrics=>({lootWindows:[],firstKill:null,firstAwakening:null,drafts:0,draftSeconds:0,lootExp:0,lootGold:0,healed:0});
+const missileNames:Record<MissileKind,string>={spore:'孢子',arrow:'穿甲箭',thorn:'飞刺',venom:'毒涎',frost:'冰锥',ember:'火矢',spirit:'魂火'};
 
 const flightSpeed: Record<FlightKind, number> = {
   fireball: 390, talisman: 320, ghost_fire_curse: 345, meteor: 610, shinsu_hit: 345
@@ -80,6 +88,15 @@ export class GameEngine {
   bossSpawned = false;
   bossDefeated = false;
 
+  deathCause:DeathCause|null = null;
+  metrics=freshMetrics();
+  path:PathId|null=null;
+  fieldTraining=0;
+  get pathName(){return this.path ? paths[this.path].title : '';}
+  respiteUntil=0;
+  lastDraftAt=0;
+  lastGrowth:{title:string;until:number}|null=null;
+  pickupFeedback={exp:0,gold:0,until:0};
   rerolls = RUN_REROLLS;
   private eliteTimer = 0;
   private spawnedMilestones = new Set<number>();
@@ -127,7 +144,7 @@ export class GameEngine {
   alertBanner: AlertBanner | null = null;
 
   upgradeChoices: Array<{
-    type: 'skill' | 'passive';
+    type: 'skill' | 'passive' | 'path';
     id: string;
     isNew: boolean;
     level: number;
@@ -194,6 +211,8 @@ export class GameEngine {
   }
 
   start(heroClass: HeroClass, chapterId: string, difficultyId?: DifficultyCurveId, training = freshTraining()) {
+    this.deathCause=null;this.metrics=freshMetrics();this.path=null;this.fieldTraining=0;this.respiteUntil=0;this.lastDraftAt=0;
+    this.lastGrowth=null;this.pickupFeedback={exp:0,gold:0,until:0};
     this.rerolls = RUN_REROLLS;
     this.runId = globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2);
     this.training = {...training};
@@ -277,6 +296,7 @@ export class GameEngine {
 
   snapshot() {
     return {
+      deathCause:this.deathCause, metrics:this.metrics, path:this.path, fieldTraining:this.fieldTraining, respiteUntil:this.respiteUntil, lastDraftAt:this.lastDraftAt,
       encounterVersion: 1, enemyShots:this.enemyShots, nextRangedWaveAt:this.nextRangedWaveAt,
       tempoVersion: 2, rerolls:this.rerolls, flights:this.flights, runId: this.runId, heroClass: this.heroClass, chapterId: this.chapterId, difficultyId: this.difficultyId,
       phase: this.phase, clock: this.clock, wave: this.wave, wavePhaseName: this.wavePhaseName,
@@ -292,6 +312,11 @@ export class GameEngine {
   restore(saved: ReturnType<GameEngine['snapshot']>) {
     const { milestones, ...state } = structuredClone(saved);
     Object.assign(this, state);
+    this.metrics={...freshMetrics(),...state.metrics};
+    this.path=state.path && Object.hasOwn(paths,state.path) ? state.path : null;
+    this.fieldTraining=state.fieldTraining??0;
+    this.respiteUntil=state.respiteUntil??0;this.lastDraftAt=state.lastDraftAt??this.clock;
+    this.deathCause=state.deathCause??null;this.lastGrowth=null;this.pickupFeedback={exp:0,gold:0,until:0};
     this.rerolls = Number.isInteger(state.rerolls) ? Math.max(0,Math.min(RUN_REROLLS,state.rerolls)) : RUN_REROLLS;
     this.player.areaBonus = this.activePassives.reduce((sum,p)=>sum+(WOOWL_PASSIVES[p.id]?.effect.areaMod??0)*p.level,0);
     this.terrain = chapterTerrain(this.chapterId);
@@ -309,6 +334,7 @@ export class GameEngine {
     }
     // Older saves kept the display text and icon alongside each pending choice.
     for (const choice of this.upgradeChoices) {
+      if(choice.type==='path')continue;
       const def = choice.type === 'skill' ? WOOWL_SKILLS[choice.id] : WOOWL_PASSIVES[choice.id];
       if (!def) continue;
       choice.title = choice.type==='skill' && choice.level===5 ? def.name+' · 觉醒「'+WOOWL_SKILLS[choice.id].upgrades[4].title+'」' : choiceTitle(def.name,choice.level,choice.isNew);
@@ -413,7 +439,7 @@ export class GameEngine {
 
     const len = Math.hypot(this.inputX, this.inputY);
     if (len > 0.05) {
-      const step = this.player.speed * clampedDt;
+      const step = this.player.speed * clampedDt * Math.min(1,len);
       this.terrain.move(this.player, this.inputX / len * step, this.inputY / len * step);
       this.player.dir = calcDirection(this.inputX, this.inputY);
       this.player.moving = true;
@@ -1189,7 +1215,8 @@ export class GameEngine {
     this.waveProgress = Math.min(1, state.progress);
 
     // Accumulator-based smooth spawning
-    this.spawnAccumulator += state.spawnChancePerSec * dt;
+    const gathering=this.clock<this.respiteUntil;
+    if(!gathering)this.spawnAccumulator += state.spawnChancePerSec * dt;
     while (this.spawnAccumulator >= 1) {
       this.spawnAccumulator -= 1;
       if (this.monsters.length < state.targetCount) {
@@ -1197,12 +1224,12 @@ export class GameEngine {
       }
     }
 
-    if (this.clock >= this.nextRangedWaveAt) {
+    if (!gathering && this.clock >= this.nextRangedWaveAt) {
       const wave = rangedWave(this.clock);
       const active = this.monsters.filter(m => m.typeId === chap.rangedType).length;
       for (let i = 0; i < Math.min(wave.count, wave.cap - active); i++) {
         const elite = this.clock >= 360 && i === 1 && Math.random() < .22;
-        this.spawnMonsterFromChapter(elite, 305 + Math.random() * 70, chap.rangedType);
+        this.spawnMonsterFromChapter(elite, 305 + Math.random() * 70, chap.rangedType, undefined, true);
       }
       this.nextRangedWaveAt = this.clock + wave.interval;
     }
@@ -1216,7 +1243,7 @@ export class GameEngine {
     }
 
     // Periodic Minor Elite Spawn
-    if (this.clock >= 30) this.eliteTimer += dt;
+    if (!gathering && this.clock >= 30) this.eliteTimer += dt;
     if (this.eliteTimer >= curve.eliteInterval) {
       this.eliteTimer = 0;
       const eliteCount = this.difficultyId === 'hell' || state.progress > 0.65 ? 2 : 1;
@@ -1291,6 +1318,7 @@ export class GameEngine {
           const summonSlots=Math.max(0,4-this.monsters.filter(guard=>guard.summonedBy===m.id).length);
           const cast = planBossCast(this.chapterId,m,this.player,this.terrain,this.clock,summonSlots);
           m.bossCast = cast;
+          sound.playThreat(cast.kind);
           m.bossStep = ((m.bossStep ?? 0)+1)%3;
           m.dashCd = enraged(m) ? 2.8 : 4;
           if (cast.kind === 'ground') {
@@ -1304,6 +1332,10 @@ export class GameEngine {
         m.dashCd = (m.dashCd ?? 3) - dt;
         if (m.dashCd <= 0) {
           m.dashCd = 7;
+          if(this.chapterId==='central_state'){
+            m.bossCast=planCharge(m,this.player,this.terrain,this.clock,chapterLessons.central_state.move,145);
+            continue;
+          }
           this.dangers.push(...attackZones(this.chapterId, m, this.player, this.clock));
         }
       }
@@ -1318,10 +1350,11 @@ export class GameEngine {
     }
 
     this.dangers = this.dangers.filter(zone => {
-      if (!this.monsters.some(m => m.id === zone.owner)) return false;
+      const owner=this.monsters.find(m=>m.id===zone.owner);
+      if (!owner) return false;
       if (zone.impact <= this.clock && zone.damage > 0) {
         const dist = Math.hypot(this.player.x-zone.x, this.player.y-zone.y);
-        if (this.phase === 'battle' && dist <= zone.radius && dist >= zone.inner) this.hitPlayer(zone.damage);
+        if (this.phase === 'battle' && dist <= zone.radius && dist >= zone.inner) this.hitPlayer(zone.damage,owner,{enemy:owner.name,move:owner.isBoss ? bossKits[this.chapterId].signature : chapterLessons[this.chapterId].move,tip:chapterLessons[this.chapterId].tip});
         zone.damage = 0;
       }
       return this.clock < zone.impact + .23;
@@ -1342,7 +1375,7 @@ export class GameEngine {
       const kit=bossKits[this.chapterId];
       for (let i=0;i<cast.count;i++) {
         const angle=cast.angle+(i-(cast.count-1)/2)*kit.spread;
-        this.enemyShots.push({kind:kit.missile,x:m.x,y:m.y,dx:Math.cos(angle),dy:Math.sin(angle),
+        this.enemyShots.push({kind:kit.missile,source:m.name,move:cast.name,x:m.x,y:m.y,dx:Math.cos(angle),dy:Math.sin(angle),
           remaining:400,damage:Math.round(m.damage*.55)});
       }
     } else if (cast.kind === 'summon') {
@@ -1360,7 +1393,7 @@ export class GameEngine {
       const t=Math.max(0,Math.min(1,((this.player.x-lastX)*dx+(this.player.y-lastY)*dy)/(dx*dx+dy*dy || 1)));
       if (!cast.hit && Math.hypot(this.player.x-lastX-t*dx,this.player.y-lastY-t*dy)<=CHARGE_RADIUS) {
         cast.hit=true;
-        this.hitPlayer(Math.round(m.damage*.8),m);
+        this.hitPlayer(Math.round(m.damage*(m.isBoss ? .8 : .36)),m,{enemy:m.name,move:cast.name,tip:'看准冲锋带，向两侧横移。'});
       }
       if (progress<1) return;
     }
@@ -1382,7 +1415,7 @@ export class GameEngine {
         const angle = Math.atan2(aim.dy, aim.dx);
         const spread = m.typeId === 'triple_serpent' ? [-.22, 0, .22] : [0];
         for (const offset of spread) {
-          this.enemyShots.push({kind, x:m.x, y:m.y, dx:Math.cos(angle+offset), dy:Math.sin(angle+offset),
+          this.enemyShots.push({kind,source:m.name,move:missileNames[kind], x:m.x, y:m.y, dx:Math.cos(angle+offset), dy:Math.sin(angle+offset),
             remaining:310, damage:Math.max(4, Math.round(m.damage * .68))});
         }
         m.nextShotAt = this.clock + profile.cooldown + (m.id % 5) * .12;
@@ -1408,7 +1441,7 @@ export class GameEngine {
         travel -= step;
         if (this.terrain.settle(shot, 3)) return false;
         if (Math.hypot(shot.x-this.player.x, shot.y-this.player.y) <= PLAYER_RADIUS + 4) {
-          if (this.phase === 'battle') this.hitPlayer(shot.damage);
+          if (this.phase === 'battle') this.hitPlayer(shot.damage,undefined,{enemy:shot.source??'远程怪物',move:shot.move??missileNames[shot.kind],tip:'横移躲开弹道，或借树干、石柱挡弹。'});
           return false;
         }
       }
@@ -1434,7 +1467,7 @@ export class GameEngine {
     return weightedPool[0]?.typeId || 'scarecrow';
   }
 
-  private spawnMonsterFromChapter(isElite = false, customDist?: number, fixedType?: string, point?: {x:number;y:number}) {
+  private spawnMonsterFromChapter(isElite = false, customDist?: number, fixedType?: string, point?: {x:number;y:number}, rangedWave=false) {
     const chap = WOOWL_CHAPTERS[this.chapterId] || WOOWL_CHAPTERS.sunset_island;
     const curve = WOOWL_DIFFICULTY_CURVES[this.difficultyId] || WOOWL_DIFFICULTY_CURVES.standard;
     const bossTime = this.getBossTriggerTime();
@@ -1461,8 +1494,13 @@ export class GameEngine {
     const finalSpeed = Math.round(arch.speed * state.speedMult * eliteSpeedMult);
     const finalExp = Math.max(1, Math.round((arch.exp * (isElite ? 4 : 1) + state.expBonusFlat) * curve.expMult));
 
-    const spawn = point ? {...point} : {x,y};
-    this.terrain.settle(spawn, monsterFootprint({radius:isElite ? Math.round(arch.radius*1.45) : arch.radius}));
+    const radius=isElite ? Math.round(arch.radius*1.45) : arch.radius;
+    const footprint=monsterFootprint({radius});
+    const post=rangedWave && this.chapterId==='central_state'
+      ? this.terrain.cityRangedPost(this.player,dist,angle,footprint,this.monsters.filter(m=>m.typeId===chap.rangedType))
+      : undefined;
+    const spawn=point ? {...point} : post??{x,y};
+    this.terrain.settle(spawn,footprint);
     const monster:MonsterEntity={
       id: this.nextEntityId++,
       typeId: arch.id,
@@ -1474,25 +1512,26 @@ export class GameEngine {
       speed: finalSpeed,
       damage: finalDmg,
       exp: finalExp,
-      radius: isElite ? Math.round(arch.radius * 1.45) : arch.radius,
+      radius,
       scale: isElite ? 1.7 : 1.0,
       isElite,
       spriteKey: arch.spriteKey
     };
     this.monsters.push(monster);
-
+    const window=this.metrics.lootWindows.at(-1);
+    if(window && window.nextWave===null && this.clock>=window.until)window.nextWave=this.clock;
     if (isElite) {
-      this.addDamageNumber(x, y - 20, `【精英 ${arch.name} 来袭】`, '#c084fc', true);
+      this.addDamageNumber(spawn.x, spawn.y - 20, `【精英 ${arch.name} 来袭】`, '#c084fc', true);
       this.alertBanner = {
         type: 'elite',
         title: '精英来袭',
-        subtitle: `${arch.name}`,
+        subtitle: chapterLessons[this.chapterId].tip,
         duration: 3.5,
         maxDuration: 3.5,
-        x,
-        y
+        x:spawn.x,
+        y:spawn.y
       };
-      sound.playBossAlert();
+      sound.playBossAlert('elite');
     }
     return monster;
   }
@@ -1537,13 +1576,13 @@ export class GameEngine {
     this.alertBanner = {
       type: 'elite',
       title: '领主来袭',
-      subtitle: `${name}`,
+      subtitle: name+' · '+chapterLessons[this.chapterId].tip,
       duration: 5.0,
       maxDuration: 5.0,
       x,
       y
     };
-    sound.playBossAlert();
+    sound.playBossAlert('lord');
   }
 
   private spawnBoss() {
@@ -1589,7 +1628,7 @@ export class GameEngine {
       x,
       y
     };
-    sound.playBossAlert();
+    sound.playBossAlert('boss');
     sound.playBgm('boss');
 
     this.addDamageNumber(x, y, `【灭世魔主 · ${chap.bossName} 降临！】`, '#ff0033', true);
@@ -1615,6 +1654,7 @@ export class GameEngine {
       }
 
       if (dotDmg > 0) {
+        dotDmg=Math.round(dotDmg*this.pathDamage(m));
         m.hp -= dotDmg;
         this.addDamageNumber(m.x, m.y - 8, `${dotDmg}`, dotColor, false);
         if (m.hp <= 0) {
@@ -1624,10 +1664,11 @@ export class GameEngine {
     }
   }
 
-  private hitPlayer(dmg: number, attacker?: MonsterEntity) {
+  private hitPlayer(dmg: number, attacker?: MonsterEntity, cause?:DeathCause) {
     if (this.player.invulnerableTime > 0) return;
 
     let finalDmg = dmg * (1 - this.equipment.armor * 0.075);
+    if(this.path==='guardian') finalDmg*=.85;
     if (this.clock < this.player.shieldUntil) {
       finalDmg *= (1 - this.shieldReduction);
     }
@@ -1645,16 +1686,24 @@ export class GameEngine {
 
     if (this.player.hp <= 0) {
       this.player.hp = 0;
+      if(this.bossDefeated)return;
+      const window=this.metrics.lootWindows.at(-1);
+      if(window && this.clock<window.until)window.died=true;
+      this.deathCause=cause??{enemy:attacker?.name??'怪群',move:'近身围攻',tip:'沿怪群外侧移动，穿过较宽的缺口。'};
       this.phase = 'game_over';
       sound.play('player_die');
       sound.stopBgm();
     }
   }
 
+  private pathDamage(m:MonsterEntity) {
+    return this.path==='hunter' && (m.isElite||m.isBoss) ? 1.25 : 1;
+  }
+
   damageEnemy(m: MonsterEntity, dmg: number, crit = false) {
     if (m.hp <= 0) return;
     const armorMult = 1 + (m.armorBreak || 0);
-    const finalDmg = Math.max(1, Math.round(dmg * armorMult));
+    const finalDmg = Math.max(1, Math.round(dmg * armorMult * this.pathDamage(m)));
 
     m.hp -= finalDmg;
     this.addDamageNumber(m.x, m.y, `${finalDmg}`, crit ? '#ffdd00' : '#ffffff', crit);
@@ -1669,6 +1718,14 @@ export class GameEngine {
     this.monsters = this.monsters.filter(e => e.id !== m.id);
     const firstDrop = this.drops.length;
     this.player.kills++;
+    this.metrics.firstKill??=this.clock;
+    if(m.isElite && !this.bossSpawned){
+      const quiet=m.typeId==='elite_milestone'?6:2.5;
+      const prev=this.metrics.lootWindows.at(-1);
+      this.respiteUntil=Math.max(this.respiteUntil,this.clock+quiet);
+      if(prev && prev.until>this.clock)prev.until=this.respiteUntil;
+      else this.metrics.lootWindows.push({start:this.clock,until:this.respiteUntil,exp:0,gold:0,healed:0,died:false,nextWave:null});
+    }
     if (!m.isBoss && (m.isElite || Math.random() < 0.018)) {
       const slot = Math.random() < .5 ? 'weapon' : 'armor';
       const rank = Math.min(4, 1 + Math.floor(this.clock / 165) + (m.typeId === 'elite_milestone' ? 1 : 0));
@@ -1730,7 +1787,7 @@ export class GameEngine {
   }
 
   private updateDrops(dt: number) {
-    let coinCount=0, coinTier=1;
+    let coinCount=0, coinTier=1, pickedExp=0, pickedGold=0, healed=0;
     const pickupDist = this.player.pickupRange;
     if (this.drops.length > 320 && Math.floor(this.clock)!==Math.floor(this.clock-dt)) {
       const piles = new Map<string, DropEntity>();
@@ -1749,6 +1806,7 @@ export class GameEngine {
       const d = this.drops[i];
       const dist = Math.hypot(this.player.x - d.x, this.player.y - d.y);
 
+      if(d.type==='potion' && this.player.hp>=this.player.maxHp)continue;
       if (dist <= pickupDist) {
         const angle = Math.atan2(this.player.y - d.y, this.player.x - d.x);
         const flySpeed = 480;
@@ -1757,11 +1815,13 @@ export class GameEngine {
 
         if (dist <= 32 || dist <= flySpeed * dt) {
           if (d.type === 'exp') {
+            pickedExp+=d.value;
             this.gainExp(d.value);
             coinCount++;
             coinTier=Math.max(coinTier,d.tier || 1);
           } else if (d.type === 'gold') {
             this.player.gold += d.value;
+            pickedGold+=d.value;
             coinCount++;
             coinTier=Math.max(coinTier,d.tier || 1);
           } else if (d.type === 'gear' && d.slot) {
@@ -1773,20 +1833,31 @@ export class GameEngine {
             } else {
               const value = d.value * 18;
               this.player.gold += value;
+              pickedGold+=value;
               this.addDamageNumber(this.player.x, this.player.y, '售 +' + value, '#e6c57c');
             }
             coinCount++;
             coinTier=Math.max(coinTier,2);
           } else if (d.type === 'potion') {
-            const healAmt = d.value || 40;
-            this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
+            const healAmt=Math.min(this.player.maxHp-this.player.hp,(d.value||40)*(this.path==='guardian'?1.5:1));
+            this.player.hp+=healAmt;
+            this.metrics.healed+=healAmt;healed+=healAmt;
             sound.playPotionPickup();
-            this.addDamageNumber(this.player.x, this.player.y, `+${healAmt} 气血`, '#44ff44');
+            this.addDamageNumber(this.player.x, this.player.y, `+${healAmt<.1?'<0.1':Math.round(healAmt*10)/10} 气血`, '#44ff44');
           }
           this.drops.splice(i, 1);
           if (this.phase !== 'battle') break;
         }
       }
+    }
+    const window=this.metrics.lootWindows.at(-1);
+    if(window && this.clock<window.until){
+      window.exp+=pickedExp;window.gold+=pickedGold;window.healed+=healed;
+    }
+    if(pickedExp||pickedGold){
+      this.metrics.lootExp+=pickedExp;this.metrics.lootGold+=pickedGold;
+      const prev=this.pickupFeedback.until>this.clock?this.pickupFeedback:{exp:0,gold:0};
+      this.pickupFeedback={exp:prev.exp+pickedExp,gold:prev.gold+pickedGold,until:this.clock+.8};
     }
     if (coinCount) sound.playCoinPickup(coinTier,coinCount);
   }
@@ -1818,13 +1889,55 @@ export class GameEngine {
         x: this.player.x,
         y: this.player.y
       });
+      const awaitingFirstAwakening=this.metrics.firstAwakening===null && !this.activeSkills.some(a=>a.level===5) && this.activeSkills.some(a=>a.level===4);
+      const swapDue=this.player.level%SWAP_INTERVAL===0 && this.activeSkills.length===5 &&
+        this.availableReplacements().some(s=>s.quality==='mythic'||s.quality==='legendary');
+      // Space decisions by battle time. A slow levelling run gets an extra
+      // build opportunity before the boss; dense runs retain the same cadence.
+      const buildFloor=Math.floor(8+this.clock/50);
+      const draftInterval=this.metrics.drafts<buildFloor ? 12 : this.metrics.drafts>=22 ? 55 : 40;
+      const untilBoss=this.getBossTriggerTime()-this.clock;
+      const readyForBoss=untilBoss>0 && untilBoss<=30 && this.activeSkills.every(s=>s.level===5);
+      if(this.clock>=180 && !awaitingFirstAwakening && (this.clock-this.lastDraftAt<draftInterval || readyForBoss) &&
+         !swapDue && (this.clock<300 || this.path)){
+        this.bankRoutineGrowth();
+        return;
+      }
       this.triggerLevelUp();
+    }
+  }
+
+  private bankRoutineGrowth() {
+    // Consolidate ordinary ranks into an already chosen skill; leave the fifth rank to the player.
+    const lead=this.activeSkills.filter(s=>s.level<4).sort((a,b)=>b.level-a.level)[0];
+    if(lead){
+      lead.level++;
+      this.lastGrowth={title:WOOWL_SKILLS[lead.id].name+' '+lead.level+'级',until:this.clock+2.5};
+      return;
+    }
+    const stat=[...this.activePassives].reverse().find(p=>p.level<WOOWL_PASSIVES[p.id].maxLevel);
+    if(stat){
+      stat.level++;
+      this.applyPassiveEffects();
+      this.lastGrowth={title:WOOWL_PASSIVES[stat.id].name+' '+stat.level+'级',until:this.clock+2.5};
+    }else{
+      this.fieldTraining++;
+      this.applyPassiveEffects();
+      this.lastGrowth={title:'历练 · 伤害 +4%',until:this.clock+2.5};
     }
   }
 
   private triggerLevelUp() {
     this.phase = 'level_up';
-    this.upgradeChoices = this.generateUpgradeChoices();
+    if(this.clock>=300 && !this.path) {
+      this.upgradeChoices=Object.entries(paths).map(([id,info])=>({type:'path',id,level:1,isNew:true,...info}));
+    }else{
+      this.upgradeChoices=this.generateUpgradeChoices();
+    }
+    if(this.upgradeChoices.length){
+      this.metrics.drafts++;
+      this.lastDraftAt=this.clock;
+    }
     if (!this.upgradeChoices.length) {
       this.player.gold += 60;
       this.phase = 'battle';
@@ -1832,7 +1945,7 @@ export class GameEngine {
   }
 
   rerollChoices() {
-    if (this.phase!=='level_up' || this.rerolls<=0) return false;
+    if (this.phase!=='level_up' || this.upgradeChoices[0]?.type==='path' || this.rerolls<=0) return false;
     const previous=new Set(this.upgradeChoices.map(c=>c.id));
     const next=this.generateUpgradeChoices(previous);
     if (!next.some(c=>!previous.has(c.id))) return false;
@@ -1932,6 +2045,11 @@ export class GameEngine {
       }
     }
 
+    // Guarantee the first available awakening a seat in the initial hand.
+    if(!previous.size && !this.activeSkills.some(s=>s.level===5)) {
+      const rank=choices.findIndex(c=>c.item.type==='skill' && c.item.level===5);
+      if(rank>=0)selected.push(choices.splice(rank,1)[0].item);
+    }
     // Weighted selection of 3 unique choices
     const pool = [...choices];
 
@@ -1963,7 +2081,12 @@ export class GameEngine {
     if (!choice.swap && choice.type==='skill' && choice.isNew && this.activeSkills.length>=5) return;
     sound.play('ui_click');
 
-    if (choice.type === 'skill') {
+    if(choice.type==='path'){
+      if(!Object.hasOwn(paths,choice.id))return;
+      this.path=choice.id as PathId;
+      this.applyPassiveEffects();
+    }else if (choice.type === 'skill') {
+      if(choice.level===5)this.metrics.firstAwakening??=this.clock;
       const existing = this.activeSkills.find(s => s.id === choice.id);
       if (existing) {
         existing.level = choice.level;
@@ -1995,9 +2118,10 @@ export class GameEngine {
 
   private applyPassiveEffects() {
     const chapDiff = WOOWL_CHAPTERS[this.chapterId]?.chapterDifficulty || 1.0;
-    this.player.damageBonus = (chapDiff - 1) * 0.30 + this.equipment.weapon * .19 + this.training.might * .04;
+    this.player.damageBonus = (chapDiff - 1) * 0.30 + this.equipment.weapon * .19 + this.training.might * .04 + this.fieldTraining*.04;
     this.player.speed = this.heroClass === 'warrior' ? 225 : this.heroClass === 'wizard' ? 212 : 218;
-    this.player.cooldownBonus = 0;
+    this.player.cooldownBonus = this.path==='skirmisher' ? -.08 : 0;
+    if(this.path==='skirmisher') this.player.speed*=1.12;
     this.player.areaBonus = 0;
     this.player.pickupRange = 135 + this.training.fortune * 8;
     this.player.hpRegen = 0.5;

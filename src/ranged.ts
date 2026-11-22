@@ -10,6 +10,7 @@ export const missiles = {
 
 export type MissileKind = keyof typeof missiles;
 export interface EnemyShot {
+  source?:string; move?:string;
   kind: MissileKind;
   x: number;
   y: number;

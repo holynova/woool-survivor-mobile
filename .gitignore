@@ -9,3 +9,5 @@ scratch/
 test_woool_retro_ui_and_fx.mjs
 
 dist/
+
+__pycache__/

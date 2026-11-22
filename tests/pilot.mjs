@@ -32,6 +32,13 @@ export function steer(g) {
       const mid=Math.hypot(m.x-(p.x+dx*70),m.y-(p.y+dy*70))-m.radius;
       score-=Math.max(0,100-d)*1.6+Math.max(0,48-mid)*2.2;
     }
+    for(const m of near){
+      const cast=m.bossCast;
+      if(cast?.kind!=='charge')continue;
+      const lx=cast.to.x-cast.from.x,ly=cast.to.y-cast.from.y;
+      const t=Math.max(0,Math.min(1,((x-cast.from.x)*lx+(y-cast.from.y)*ly)/(lx*lx+ly*ly||1)));
+      if(Math.hypot(x-cast.from.x-lx*t,y-cast.from.y-ly*t)<43)score-=145;
+    }
     for(const z of g.dangers){
       const d=Math.hypot(z.x-x,z.y-y);
       if(d<z.radius+16 && d>Math.max(0,z.inner-16))score-=155;

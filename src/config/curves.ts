@@ -12,7 +12,7 @@ export const MILESTONE_LORDS = [
 ] as const;
 export const ENEMY_HEALTH_SCALE = 2;
 export const attackPressure = (progress: number) => 1.25 + .35 * Math.max(0, Math.min(1,progress));
-export const AWAKENING_TIME = ELITE_MILESTONES[0];
+export const AWAKENING_TIME = 180;
 
 export const WOOWL_MONSTERS: Record<string, MonsterArchetype> = {
   spore_bloom: {id:'spore_bloom', name:'食人花', spriteKey:'spore_bloom', missile:'spore', hp:75, speed:83, damage:15, exp:7, radius:20},
@@ -313,11 +313,13 @@ export function evaluateCurveState(
   const targetCount = Math.min(135, Math.max(6, Math.round(baseCount * openingDensity * waveDensityFactor * curve.densityMult)));
   const spawnChancePerSec = Math.min(22, (1.2 + Math.pow(p, 1.25) * 12.5) * openingDensity * waveDensityFactor * curve.densityMult);
 
+  // As the duel runs long, let existing escorts die away and open a melee approach.
+  const escortPressure=1-.68*Math.max(0,Math.min(1,(elapsed-bossTime-20)/100));
   return {
     phaseIndex,
     phaseName,
-    targetCount,
-    spawnChancePerSec,
+    targetCount:Math.round(targetCount*escortPressure),
+    spawnChancePerSec:spawnChancePerSec*escortPressure,
     hpMult: curve.hpMult * effectiveChapterHp * waveHpFactor,
     dmgMult: curve.dmgMult * effectiveChapterDmg * attackPressure(p),
     speedMult: curve.speedMult * effectiveChapterSpd * waveSpeedFactor * 1.04 * (curveId === 'standard' ? .85 + .15 * Math.min(1, elapsed / 75) : 1),

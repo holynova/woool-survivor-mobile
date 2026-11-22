@@ -2,9 +2,9 @@
 
 gh release download v0.2.5.0 -R xinntao/Real-ESRGAN -p realesr-animevideov3.pth -D /tmp
 uv run --python 3.12 --with torch --with numpy --with scipy --with pillow --with rectpack \
-  tools/build_battle_art.py /tmp/realesr-animevideov3.pth
+  tools/build_battle_art.py /tmp/realesr-animevideov3.pth /tmp/woool-art
 
-Only the resulting chapter atlas is shipped to a player's browser.
+Run build_equipment_art.py with --fetch first. Each chapter ships separate walk and cast sheets.
 """
 import hashlib
 import json
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
-from rectpack import newPacker, MaxRectsBlsf
+from PIL import Image, ImageDraw
+from battle_atlas import ROOT, Pose, original_frames, phaser_frames, pack
 from scipy.ndimage import distance_transform_edt
 from torch import nn
 from torch.nn import functional as F
@@ -54,40 +54,95 @@ def restore(frame, model, device):
     return image
 
 
-def build(key, model, device):
-    stem = SOURCE / ("m_" + key + "@0")
-    original = Image.open(stem.with_suffix(".png")).convert("RGBA")
-    frames = json.loads(stem.with_suffix(".json").read_text())["frames"]
-    frames = {k: v for k, v in frames.items() if "/walk/" in k}
-    packer = newPacker(rotation=False, pack_algo=MaxRectsBlsf)
-    for name, spec in frames.items():
-        r = spec["frame"]
-        assert not spec["rotated"]
-        packer.add_rect(r["w"]*2+4, r["h"]*2+4, name)
-    packer.add_bin(2048, 2048)
-    packer.pack()
-    layout = packer.rect_list()
-    assert len(layout) == len(frames), key
-    sheet = Image.new("RGBA", (max(x+w for _, x, _, w, _, _ in layout),
-                               max(y+h for _, _, y, _, h, _ in layout)))
-    for _, x, y, w, h, name in layout:
-        spec = frames[name]
-        r = spec["frame"]
-        frame = original.crop((r["x"], r["y"], r["x"]+r["w"], r["y"]+r["h"]))
-        sheet.paste(restore(frame, model, device), (x+2, y+2))
-        spec["frame"] = dict(x=x+2, y=y+2, w=w-4, h=h-4)
-        for field in ("sourceSize", "spriteSourceSize"):
-            spec[field] = {k:v*2 for k,v in spec[field].items()}
-    sheet.save(OUTPUT / (key+".webp"), quality=92, method=5)
-    (OUTPUT / (key+".json")).write_text(json.dumps({"frames": frames}, separators=(",", ":")))
-    print(key, len(frames), sheet.size, flush=True)
+
+def palette(image, key):
+    """Retain the source luminance, baked highlights, transparent shadows and fur texture."""
+    a = np.array(image)
+    rgb = a[:,:,:3].astype(float)
+    r,g,b = rgb.transpose(2,0,1)
+    if key=="20046":
+        mask = (a[:,:,3]>85) & (r>g*1.10) & (r>b*1.12)
+        luma=rgb @ np.array([.30,.58,.12])/255
+        for i,(dark,mid,light) in enumerate([(22,108,206),(13,45,115),(12,26,59)]):
+            a[:,:,i][mask]=np.interp(luma[mask],[0,.56,1],[dark,mid,light]).astype("uint8")
+    elif key=="20038":
+        # Bronze highlights on the hood stay warm; the linked scales become green malachite.
+        mask=(a[:,:,3]>100)&(r>g*1.18)&(g>b*.98)
+        y=rgb @ np.array([.3,.58,.12])/255
+        for i,(low,mid,hi) in enumerate([(6,39,161),(21,135,213),(20,97,147)]):
+            a[:,:,i][mask]=np.interp(y[mask],[0,.46,1],[low,mid,hi]).astype("uint8")
+    return Image.fromarray(a)
 
 
-if __name__ == "__main__":
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    torch.set_num_threads(4)
-    model = load_model(Path(sys.argv[1]), device)
-    OUTPUT.mkdir(exist_ok=True)
+def tusker(image, direction):
+    # Curved pairs of ivory tusks follow the snout. The back bristles run along
+    # the lit dorsal contour, measured per frame so they follow the original gait.
+    rgb=np.asarray(image).astype(float)
+    r,g,b,a=rgb.transpose(2,0,1)
+    hide=(a>130)&(r>g*1.18)&(r>b*1.25)
+    ys,xs=np.nonzero(hide)
+    if not len(xs):return image
+    x0,x1=int(xs.min()),int(xs.max()); y0,y1=int(ys.min()),int(ys.max())
+    w,h=x1-x0,y1-y0; path=ImageDraw.Draw(image)
+    for x in range(round(x0+w*.19),round(x0+w*.70),3):
+        col=np.flatnonzero(hide[:,x])
+        if not len(col):continue
+        y=int(col[0]); height=3+(x%11)*.47
+        path.polygon([(x-2,y+5),(x-4,y-height),(x+3,y+3)], fill=(93+x%24,37+x%11,22,255))
+        path.line([(x-3,y-height+1),(x,y+2)],fill=(170,83,42,255),width=1)
+    if direction in (2,3,4):
+        for side in (-1,1):
+            if direction==2 and side<0:continue
+            if direction==2: x,y=x0+w*.94, y0+h*.56
+            elif direction==3: x,y=x0+w*(.80+.08*side),y0+h*(.73+.025*side)
+            else:x,y=x0+w*(.52+.165*side),y0+h*.76
+            tip=(x+(8 if direction==2 else side*7), y-12)
+            path.polygon([(x-3,y),(x+2,y+3),(tip[0]+2,tip[1]+5),tip,(x+1,y-3)],fill=(222,195,137,255))
+            path.line([(x+1,y+1),(tip[0],tip[1]+1)],fill=(255,231,179,255),width=1)
+    return image
+
+
+def build(key, model, device, cache):
+    substitute={"20111":("m_20036",.70,47,34),"20038":("m_20053",.71,42,53)}
+    pose_scale=1
+    if key in substitute:
+        stem,pose_scale,native_foot,rig_foot=substitute[key]
+        original=list(original_frames(cache,stem))
+    else:
+        original=list(phaser_frames(SOURCE/("m_"+key+"@0"),".png"))
+    sheets={"walk":{},"attack":{}}
+    for name,pose in original:
+        _,action,step=name.split("/")
+        if action not in sheets:continue
+        image=restore(pose.image, model, device)
+        image=palette(image,key)
+        if key=="20046":image=tusker(image,int(step[0]))
+        left,top=pose.left*2,pose.top*2
+        size=tuple(s*2 for s in pose.size)
+        if key in substitute:
+            image=image.resize(tuple(round(v*pose_scale) for v in image.size),Image.Resampling.LANCZOS)
+            left=round(384+(left-size[0]/2)*pose_scale)
+            top=round(384+(top-size[1]/2-2*native_foot)*pose_scale+rig_foot*2)
+            size=(768,768)
+        sheets[action][key+"/"+action+"/"+step]=Pose(image,left,top,size)
+    if not sheets["attack"]:
+        # The two archival leaders have a single eight-pose source angle. Give
+        # the cast an authored planted anticipation, forward strike, then recovery.
+        angles = [2,4,7,10,-9,-6,-3,0] if key=="sky_pontiff" else [0,2,5,6,-5,-3,-1,0]
+        walk=[pose for _,pose in sorted(sheets["walk"].items())]
+        for i,angle in enumerate(angles):
+            p=walk[[0,1,2,3,5,6,7,0][i]]
+            canvas=Image.new("RGBA",p.size)
+            canvas.paste(p.image,(p.left,p.top))
+            feet=(p.size[0]/2,p.size[1]/2+42)
+            posed=canvas.rotate(angle,Image.Resampling.BICUBIC,center=feet)
+            box=posed.getbbox()
+            sheets["attack"][f"{key}/attack/3{i:04}.png"]=Pose(posed.crop(box),box[0],box[1],p.size)
+    for action,poses in sheets.items():
+        pack(poses,OUTPUT/(key+("-cast" if action=="attack" else "")))
+
+
+def build_terrain(model,device):
     terrain = Path("public/assets/woool/terrain")
     pavilion = Image.open(terrain / "ancient_pavilion.webp").convert("RGBA")
     restore(pavilion, model, device).save(terrain / "ancient_pavilion_hd.webp", quality=93, method=5)
@@ -101,5 +156,16 @@ if __name__ == "__main__":
     rgb[moss] = luma[moss,None]*np.array([.90,.85,.74])
     lamp[:,:,:3]=rgb.clip(0,255).astype("uint8")
     Image.fromarray(lamp).save(terrain / "stone_lantern_paving.webp", lossless=True)
-    for key in ("20111", "sky_pontiff", "20082", "20046", "20038", "20072", "hydra_king", "20085"):
-        build(key, model, device)
+
+
+if __name__ == "__main__":
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    torch.set_num_threads(4)
+    model = load_model(Path(sys.argv[1]), device)
+    OUTPUT.mkdir(exist_ok=True)
+    if "--terrain" in sys.argv:
+        build_terrain(model,device)
+        sys.exit(0)
+    cache=Path(sys.argv[2])
+    for key in sys.argv[3:] or ("20111","20038","20046","20082","20072","sky_pontiff","hydra_king","20085"):
+        build(key,model,device,cache)

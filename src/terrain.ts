@@ -60,6 +60,40 @@ const regions: Record<string, Region> = {
   }
 };
 
+type Fixture = readonly [PropKind, number, number, number];
+interface Landmark { name:string; pieces:readonly Fixture[]; passage:Point; }
+
+// Each formation leaves a walkable break through its cover. The surrounding
+// scatter uses its own seed, so changing a landmark cannot rearrange a chapter.
+const landmarks:Record<string,Landmark>={
+  sunset_island:{name:'桃林井台',passage:{x:1630,y:680},pieces:[
+    ['tree_peach',1530,595,1.06],['tree_peach',1735,597,.98],['ancient_well',1700,715,1],['wood_fence',1530,772,1]]},
+  central_state:{name:'中州前院',passage:{x:930,y:699},pieces:[
+    ['ancient_well',786,696,1],['gate_engine',1050,757,1],['stone_lantern',845,754,1]]},
+  hot_desert:{name:'沙海残关',passage:{x:906,y:844},pieces:[
+    ['stele',794,785,1.15],['gate_engine',1003,805,1],['rock_boulder',1010,933,1.1],['dead_tree',782,950,.89]]},
+  deadwater_marsh:{name:'枯柳渡口',passage:{x:1620,y:579},pieces:[
+    ['tree_willow',1496,534,1.02],['stump',1550,662,.97],['dead_tree',1710,631,.91],['reeds',1650,478,1.06]]},
+  frozen_citadel:{name:'冰牙隘口',passage:{x:1636,y:859},pieces:[
+    ['ice_spires',1540,783,1.13],['snow_fir',1730,765,1.03],['ice_spires',1708,929,.96],['ice_spires',1534,964,.83]]},
+  serpent_valley:{name:'蛇谷岔口',passage:{x:1640,y:685},pieces:[
+    ['rock_boulder',1580,600,1.12],['stele',1730,710,1.1],['rock_boulder',1550,782,.87],['stump',1730,852,.91]]},
+  heaven_tower:{name:'通天祭坛',passage:{x:1700,y:685},pieces:[
+    ['brazier',1582,617,1],['stele',1780,602,1.1],['brazier',1796,750,1],['stele',1600,789,.92]]},
+  iron_citadel:{name:'熔炉火门',passage:{x:1670,y:570},pieces:[
+    ['lava_spire',1576,527,1.12],['gate_engine',1760,527,1],['brazier',1550,650,1],['brazier',1784,644,1]]},
+};
+
+interface DoorPath extends Point { dx:number; dy:number; lengthSq:number; }
+function connectDoor(prop:TerrainProp, region:Region):DoorPath {
+  const x=prop.x+(prop.flip?1:-1)*prop.width*.12, y=prop.y+FOOT_OFFSET+prop.ry*.75;
+  for(let d=12;d<=360;d+=12) for(let i=0;i<24;i++){
+    const dx=Math.cos(i*Math.PI/12)*d, dy=Math.sin(i*Math.PI/12)*d;
+    if(region.route(x+dx,y+dy)<-18)return {x,y,dx,dy,lengthSq:d*d};
+  }
+  return {x,y,dx:0,dy:0,lengthSq:1};
+}
+
 export function propUrl(kind: PropKind) {
   const file=kind==='ancient_pavilion' ? 'ancient_pavilion_hd' : kind==='stone_lantern' ? 'stone_lantern_paving' : kind;
   return './assets/woool/terrain/'+file+'.webp';
@@ -72,10 +106,13 @@ const clamp = (value:number, min:number, max:number) => Math.min(max,Math.max(mi
 export class Terrain {
   readonly region: Region;
   readonly props: TerrainProp[] = [];
+  readonly landmark: Landmark;
+  readonly doorPaths: DoorPath[];
   private cells: TerrainProp[][] = Array.from({length:COLS*Math.ceil(WORLD_HEIGHT/CELL)},()=>[]);
 
   constructor(chapter:string) {
     const region = this.region = regions[chapter] ?? regions.sunset_island;
+    this.landmark=landmarks[chapter]??landmarks.sunset_island;
     let seed = region.seed;
     function random() { seed=(Math.imul(seed,1664525)+1013904223)>>>0; return seed/4294967296; }
     const place=(kind:PropKind,x:number,y:number,scale:number)=>{
@@ -89,16 +126,11 @@ export class Terrain {
       const angle=kind==='wood_fence' ? (flip ? .56 : -.56) : 0;
       const prop={kind,x,y,width:width*scale,rx:rx*scale,ry:ry*scale,anchor,flip,cos:Math.cos(angle),sin:Math.sin(angle)};
       this.props.push(prop);
-      // Index the entire footprint plus the maximum actor radius for a single lookup per substep.
-      const reach=Math.max(prop.rx,prop.ry)+26;
-      for(let j=Math.max(0,Math.floor((y-reach)/CELL));j<=Math.min(Math.ceil(WORLD_HEIGHT/CELL)-1,Math.floor((y+reach)/CELL));j++)
-        for(let i=Math.max(0,Math.floor((x-reach)/CELL));i<=Math.min(COLS-1,Math.floor((x+reach)/CELL));i++)
-          this.cells[j*COLS+i].push(prop);
     };
     // Recognisable landmarks flank the clearing where a campaign begins.
     if(chapter==='central_state') {
-      place('ancient_pavilion',960,548,1);
-      place('stone_lantern',1125,666,1);
+      place('ancient_pavilion',850,495,1);
+      place('stone_lantern',1015,613,1);
     } else {
       place(region.props[0],1115,622,1.05);
       place(region.props[1],1460,832,.88);
@@ -109,11 +141,60 @@ export class Terrain {
       if(px<155 || py<140 || px>WORLD_WIDTH-155 || py>WORLD_HEIGHT-140 || Math.hypot(px-1280,py-720)<123 || region.route(px,py)<-5 ||
          this.props.some(p=>Math.hypot(p.x-px,p.y-py)<153)) continue;
       let kind=region.props[Math.floor(random()*region.props.length)];
-      if (kind==='ancient_pavilion' && (px<290 || px>WORLD_WIDTH-290 || py<265 || region.route(px,py)<120 || this.props.some(p=>p.kind===kind && Math.hypot(p.x-px,p.y-py)<720))) {
+      if (kind==='ancient_pavilion' && (px<290 || px>WORLD_WIDTH-290 || py<265 || region.route(px,py)<145 || Math.hypot(px-1280,py-720)<505 || this.props.some(p=>p.kind===kind && Math.hypot(p.x-px,p.y-py)<720))) {
         kind='tree_pine';
       }
       place(kind,px,py,.73+random()*.4);
     }
+    // Keep the three opening fixtures intact. Make room for the authored
+    // formation and its passage without shifting random props elsewhere.
+    const site=this.landmark;
+    for(let i=this.props.length-1;i>=3;i--) {
+      const p=this.props[i];
+      const competes=site.pieces.some(([kind,x,y,scale])=>
+        Math.hypot((p.x-x)/(p.rx+shapes[kind][1]*scale+52),(p.y-y)/(p.ry+shapes[kind][2]*scale+52))<1);
+      if(competes || Math.hypot((p.x-site.passage.x)/(p.rx+55),(p.y-site.passage.y)/(p.ry+55))<1)
+        this.props.splice(i,1);
+    }
+    for(const [kind,x,y,scale] of site.pieces)place(kind,x,y,scale);
+    this.doorPaths=this.props.filter(p=>p.kind==='ancient_pavilion').map(p=>connectDoor(p,region));
+    for(const prop of this.props) {
+      const {x,y}=prop;
+      // Index the entire footprint plus the maximum actor radius for a single lookup per substep.
+      const reach=Math.max(prop.rx,prop.ry)+26;
+      for(let j=Math.max(0,Math.floor((y-reach)/CELL));j<=Math.min(Math.ceil(WORLD_HEIGHT/CELL)-1,Math.floor((y+reach)/CELL));j++)
+        for(let i=Math.max(0,Math.floor((x-reach)/CELL));i<=Math.min(COLS-1,Math.floor((x+reach)/CELL));i++)
+          this.cells[j*COLS+i].push(prop);
+    }
+  }
+
+  // Streets use their full width. Courtyard entrances use the same narrow
+  // path painted from the front steps to the nearest piece of paving.
+  streetEdge(x:number,y:number) {
+    let edge=this.region.route(x,y);
+    for(const p of this.doorPaths) {
+      const rx=x-p.x, ry=y-p.y;
+      const t=clamp((rx*p.dx+ry*p.dy)/p.lengthSq,0,1);
+      edge=Math.min(edge,Math.hypot(rx-t*p.dx,ry-t*p.dy)-24);
+    }
+    return edge;
+  }
+
+  cityRangedPost(origin:Point,distance:number,startAngle:number,radius:number,allies:Point[]) {
+    let best:Point|undefined, bestScore=Infinity;
+    for(let i=0;i<48;i++) {
+      const angle=startAngle+i*Math.PI/24;
+      const x=origin.x+Math.cos(angle)*distance, y=origin.y+Math.sin(angle)*distance;
+      if(x<80 || y<80 || x>WORLD_WIDTH-80 || y>WORLD_HEIGHT-80 || this.settle({x,y},radius))continue;
+      // Prefer a street shoulder or doorstep. Vary nearby valid posts so that
+      // allies do not occupy the same firing line, even on a multi-archer wave.
+      const edge=this.streetEdge(x,y);
+      const openStreet=Math.max(0,Math.abs(edge+8)-16);
+      const crowd=allies.reduce((penalty,p)=>Math.max(penalty,66-Math.hypot(x-p.x,y-p.y)),0);
+      const score=openStreet+crowd*2+i*.2;
+      if(score<bestScore) {best={x,y};bestScore=score;}
+    }
+    return best;
   }
 
   // Resolve an ellipse in its local coordinates. The hitbox sits at the prop's feet, independent of its canopy.

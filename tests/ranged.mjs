@@ -6,6 +6,7 @@ try {
   const {GameEngine} = await server.ssrLoadModule('/src/game.ts');
   const {WOOWL_CHAPTERS} = await server.ssrLoadModule('/src/config/chapters.ts');
   const {WOOWL_MONSTERS, WOOWL_DIFFICULTY_CURVES, evaluateCurveState} = await server.ssrLoadModule('/src/config/curves.ts');
+  const {monsterFootprint}=await server.ssrLoadModule('/src/terrain.ts');
   const {missiles, rangedWave} = await server.ssrLoadModule('/src/ranged.ts');
   for (const chapter of Object.values(WOOWL_CHAPTERS)) {
     for (const difficulty of Object.keys(WOOWL_DIFFICULTY_CURVES)) {
@@ -69,6 +70,36 @@ try {
       }
     }
   }
+  const city=new GameEngine();
+  city.start('wizard','central_state','standard');
+  const chapter=WOOWL_CHAPTERS.central_state;
+  const anchors=[{x:1280,y:720},{x:1200,y:590},{x:90,y:90}];
+  const random=Math.random;
+  let usedCourtyard=false;
+  try {
+    for(const [ix,location] of anchors.entries())for(let i=0;i<16;i++) {
+      Math.random=()=>i/16;
+      Object.assign(city.player,location,{invulnerableTime:0});
+      city.monsters=[];city.clock=city.nextRangedWaveAt=35;
+      city.updateMonsterSpawns(0);
+      const archer=city.monsters[0];
+      assert.equal(archer.typeId,chapter.rangedType);
+      const distance=Math.hypot(archer.x-location.x,archer.y-location.y);
+      assert.ok(distance>=305-.001 && distance<=375,'ranged deployment ring');
+      assert.ok(archer.x>=80 && archer.y>=80 && archer.x<=2480 && archer.y<=1360);
+      assert.equal(city.terrain.settle({x:archer.x,y:archer.y},monsterFootprint(archer)),false);
+      assert.equal(archer.aim,undefined);
+      if(ix===2)continue; // A corner has no road within the deployment ring.
+      const edge=city.terrain.streetEdge(archer.x,archer.y);
+      assert.ok(Math.abs(edge)<40,'accessible street or courtyard');
+      usedCourtyard ||= city.terrain.region.route(archer.x,archer.y)>15 && edge<10;
+    }
+  } finally {Math.random=random;}
+  assert.ok(usedCourtyard,'reinforcement uses a front walk beyond the main streets');
+  const unit={x:1280,y:720};
+  const first=city.terrain.cityRangedPost(unit,340,0,13,[]);
+  const next=city.terrain.cityRangedPost(unit,340,0,13,[first]);
+  assert.ok(Math.hypot(first.x-next.x,first.y-next.y)>50,'split firing posts');
   const g = new GameEngine();
   g.start('wizard','sunset_island','standard');
   const saved = g.snapshot();

@@ -1,6 +1,7 @@
 import { createServer } from 'vite';
 import assert from 'node:assert/strict';
 import { steer,choose } from './pilot.mjs';
+import {verifyFieldRules} from './field-rules.mjs';
 
 const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom',logLevel:'silent'});
 const random=Math.random;
@@ -11,6 +12,7 @@ try {
   const {readJournal,writeJournal,finishRun,train}=await server.ssrLoadModule('/src/journal.ts');
   const memory=new Map();
   globalThis.localStorage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)};
+  await verifyFieldRules(server);memory.clear();
   const setSeed=n=>{let state=n;Math.random=()=>((state=(Math.imul(1664525,state)+1013904223)>>>0)/4294967296)};
   const {Terrain,PLAYER_RADIUS}=await server.ssrLoadModule('/src/terrain.ts');
   const city=new Terrain('central_state');
@@ -19,10 +21,26 @@ try {
   assert.ok(buildings.length && lamps.length);
   const tallestLamp=Math.max(...lamps.map(p=>p.width*102/45));
   assert.ok(tallestLamp<105 && buildings.every(p=>p.width*287/310>tallestLamp*5),'courtyard scale');
+  const landmarkNames=new Set();
   for (const id of Object.keys(chapters)) {
     const terrain=new Terrain(id);
     assert.deepEqual(terrain.props,new Terrain(id).props,id+' stable terrain');
     assert.equal(terrain.settle({x:1280,y:720},PLAYER_RADIUS),false,id+' clear start');
+    const {name,pieces,passage}=terrain.landmark;
+    assert.ok(!landmarkNames.has(name),id+' unique landmark');
+    landmarkNames.add(name);
+    assert.ok(pieces.length>=3);
+    for(const [kind,x,y] of pieces) {
+      assert.ok(terrain.props.some(p=>p.kind===kind && p.x===x && p.y===y),id+' missing '+kind);
+      assert.ok(terrain.settle({x,y},PLAYER_RADIUS),id+' solid '+kind);
+    }
+    for(const anchor of [passage,{x:1280,y:720}]) {
+      for(const [dx,dy] of [[48,0],[0,48]]) {
+        const p={x:anchor.x-dx,y:anchor.y-dy};
+        terrain.move(p,dx*2,dy*2,PLAYER_RADIUS);
+        assert.ok(Math.hypot(p.x-anchor.x-dx,p.y-anchor.y-dy)<.1,id+' landmark opening');
+      }
+    }
     for (const prop of terrain.props) {
       // Approach along the local minor axis, including diagonal fences, in one dash.
       const distance=prop.ry+PLAYER_RADIUS+28;

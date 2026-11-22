@@ -262,3 +262,14 @@ export interface ChapterDefinition {
     weight: number;
   }[];
 }
+
+export interface DeathCause { enemy:string; move:string; tip:string }
+export interface LootWindow {
+  start:number; until:number; exp:number; gold:number; healed:number;
+  died:boolean; nextWave:number|null;
+}
+export interface RunMetrics {
+  lootWindows:LootWindow[];
+  firstKill:number|null; firstAwakening:number|null; drafts:number; draftSeconds:number;
+  lootExp:number; lootGold:number; healed:number;
+}

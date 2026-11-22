@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
+import type { MonsterEntity } from './types';
+import { CHARGE_RADIUS } from './boss';
+import type { DangerZone } from './encounters';
 import { FOOT_OFFSET, WORLD_HEIGHT, WORLD_WIDTH, Terrain, propUrl, type TerrainProp } from './terrain';
 
 export function preloadField(scene: Phaser.Scene, terrain: Terrain) {
   for (const material of [terrain.region.base, terrain.region.accent]) {
-    scene.load.image('land-'+material, './assets/woool/terrain/'+material+'.webp');
+    scene.load.image('land-'+material, './assets/woool/terrain/'+(material==='basalt'?'basalt_worn':material)+'.webp');
   }
+  if(terrain.props.some(p=>p.kind==='snow_fir'))scene.load.image('prop-snow_snag','./assets/woool/terrain/snow_snag.webp');
   for (const kind of new Set(terrain.props.map(p=>p.kind))) {
     scene.load.image('prop-'+kind, propUrl(kind));
   }
@@ -17,20 +21,11 @@ function roadMask(terrain: Terrain) {
   mask.height = WORLD_HEIGHT / step;
   const ctx = mask.getContext('2d')!;
   const pixels = ctx.createImageData(mask.width, mask.height);
-  const doorPaths=terrain.props.filter(p=>p.kind==='ancient_pavilion').map(p=>{
-    const x=p.x+(p.flip ? 1 : -1)*p.width*.12, y=p.y+FOOT_OFFSET+p.ry*.75;
-    // Find the nearest street from the front steps, in world coordinates.
-    for(let d=12;d<=360;d+=12) for(let i=0;i<24;i++){
-      const dx=Math.cos(i*Math.PI/12)*d,dy=Math.sin(i*Math.PI/12)*d;
-      if(terrain.region.route(x+dx,y+dy)<-18) return {x,y,dx,dy,lengthSq:d*d};
-    }
-    return {x,y,dx:0,dy:0,lengthSq:1};
-  });
   for (let j=0; j<mask.height; j++) for (let i=0; i<mask.width; i++) {
     const x = (i+.5)*step, y = (j+.5)*step;
     const roughness = 7*Math.sin(x/19+y/23) + 4*Math.cos(x/13-y/9) + 13*Math.sin(y/73-x/65);
     let distance = terrain.region.route(x,y) + roughness;
-    for(const path of doorPaths) {
+    for(const path of terrain.doorPaths) {
       const rx=x-path.x, ry=y-path.y;
       const t=Phaser.Math.Clamp((rx*path.dx+ry*path.dy)/path.lengthSq,0,1);
       const toDoor=Math.hypot(rx-t*path.dx,ry-t*path.dy)-24+roughness*.38;
@@ -146,22 +141,38 @@ function drawGround(scene: Phaser.Scene, terrain: Terrain) {
 
 export function buildField(scene: Phaser.Scene, terrain: Terrain) {
   drawGround(scene,terrain);
-  const props=terrain.props.map(prop=>{
+  const props=terrain.props.map((prop,index)=>{
     const feet=prop.y+FOOT_OFFSET;
-    const sprite=scene.add.image(prop.x,feet,'prop-'+prop.kind)
+    const sparse=prop.kind==='snow_fir' && index%3===1;
+    const sprite=scene.add.image(prop.x,feet,sparse?'prop-snow_snag':'prop-'+prop.kind)
       .setOrigin(.5,prop.anchor).setFlipX(prop.flip).setDepth(prop.y);
-    sprite.setScale(prop.width/sprite.width);
-    return {prop,sprite};
+    sprite.setScale(prop.width*(sparse ? .76 : 1)/sprite.width);
+    if(prop.kind==='ancient_pavilion')sprite.setTint(0xd8d4c9,0xd8d4c9,0xfbfaeb,0xfbfaeb);
+    const coverBounds=new Phaser.Geom.Rectangle(
+      prop.x-prop.width*.45-CHARGE_RADIUS,prop.y-sprite.displayHeight*prop.anchor-CHARGE_RADIUS,
+      prop.width*.9+2*CHARGE_RADIUS,sprite.displayHeight*prop.anchor+2*CHARGE_RADIUS);
+    return {prop,sprite,coverBounds};
   });
-  return (player:{x:number;y:number},boss?:{x:number;y:number})=>{
-    for (const {prop,sprite} of props) {
-      const behind=prop.y-player.y;
-      const covered=behind>0 && behind<sprite.displayHeight*prop.anchor+12 &&
-        Math.abs(player.x-prop.x)<prop.width*.39;
-      const coversBoss=boss && boss.y<prop.y && prop.y-boss.y<sprite.displayHeight*prop.anchor+15 &&
-        Math.abs(boss.x-prop.x)<prop.width*.45+28;
-      const target=coversBoss ? .3 : covered ? .46 : 1;
-      const blend=1-Math.exp(-Math.min(scene.game.loop.delta || 16,80)/95);
+  return (player:{x:number;y:number},monsters:MonsterEntity[],zones:DangerZone[])=>{
+    const dangerous=monsters.filter(m=>m.isBoss || m.aim || m.bossCast);
+    const charges=dangerous.flatMap(m=>{
+      const c=m.bossCast;
+      return c?.kind==='charge'?[new Phaser.Geom.Line(c.from.x,c.from.y,c.to.x,c.to.y)]:[];
+    });
+    const blend=1-Math.exp(-Math.min(scene.game.loop.delta || 16,80)/85);
+    for (const {prop,sprite,coverBounds} of props) {
+      const behind=(actor:{x:number;y:number},margin:number)=>{
+        const dy=prop.y-actor.y;
+        return dy>=-2 && dy<sprite.displayHeight*prop.anchor+margin && Math.abs(actor.x-prop.x)<prop.width*.46+margin;
+      };
+      // Reveal the near part of a telegraph even if its centre (or caster) is clear of the eaves.
+      const hidesZone=zones.some(z=>{
+        const dx=Math.max(0,Math.abs(z.x-prop.x)-prop.width*.42);
+        const dy=Math.max(0,z.y-prop.y,prop.y-sprite.displayHeight*prop.anchor-z.y);
+        return dx*dx+dy*dy<z.radius*z.radius;
+      });
+      const hidesCharge=charges.some(line=>Phaser.Geom.Intersects.LineToRectangle(line,coverBounds));
+      const target=hidesZone || hidesCharge || dangerous.some(m=>behind(m,20)) ? .27 : behind(player,7) ? .42 : 1;
       if (Math.abs(sprite.alpha-target)>.003) sprite.setAlpha(sprite.alpha+(target-sprite.alpha)*blend);
     }
   };

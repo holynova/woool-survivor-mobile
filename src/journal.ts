@@ -8,13 +8,15 @@ export type Checkpoint = ReturnType<GameEngine['snapshot']>;
 type Result = 'victory' | 'game_over' | 'retired';
 export interface RecordEntry {
   id: string; chapter: string; role: Checkpoint['heroClass']; difficulty: Checkpoint['difficultyId'];
+  deathCause?:Checkpoint['deathCause']; build?:string; metrics?:Checkpoint['metrics'];
   outcome: Result; seconds: number; level: number; kills: number; coins: number;
 }
 export interface Journal {
   version: 1; bank: number; training: Training; recent: RecordEntry[];
   cleared: string[]; saved: Checkpoint | null;
 }
-export const journalKey = 'woool.mobile.journal.v1';
+export const journalKey = 'woool.mobile.journal.v1.1';
+const stableJournalKey='woool.mobile.journal.v1';
 const fresh = (): Journal => ({version: 1, bank: 0, training: freshTraining(), recent: [], cleared: [], saved: null});
 const nonnegative = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 function validSave(s: Checkpoint) {
@@ -31,7 +33,8 @@ function validSave(s: Checkpoint) {
 }
 export function readJournal(): Journal {
   try {
-    const raw = localStorage.getItem(journalKey);
+    const own=localStorage.getItem(journalKey);
+    const raw = own??localStorage.getItem(stableJournalKey);
     if (!raw) return fresh();
     const j: Journal = JSON.parse(raw);
     if (j.version !== 1 || !nonnegative(j.bank) || !Array.isArray(j.recent) || !Array.isArray(j.cleared)
@@ -39,6 +42,7 @@ export function readJournal(): Journal {
     try {
       if (j.saved && !validSave(j.saved)) j.saved = null;
     } catch { j.saved = null; }
+    if(own===null)writeJournal(j);
     return j;
   } catch { return fresh(); }
 }
@@ -48,7 +52,9 @@ export function writeJournal(j: Journal) {
 }
 export function finishRun(j: Journal, game: GameEngine, outcome: Result): Journal {
   if (j.recent.some(r => r.id === game.runId)) return j;
-  const record = {id: game.runId, chapter: game.chapterId, role: game.heroClass, difficulty: game.difficultyId,
+  const main=game.activeSkills.slice().sort((a,b)=>b.level-a.level).slice(0,2).map(s=>WOOWL_SKILLS[s.id].name+' '+s.level+'级');
+  const build=[game.pathName,...main].filter(Boolean).join(' · ');
+  const record = {build,metrics:{...game.metrics},deathCause:outcome==='game_over'?game.deathCause:null,id: game.runId, chapter: game.chapterId, role: game.heroClass, difficulty: game.difficultyId,
     outcome, seconds: Math.floor(game.clock), level: game.player.level, kills: game.player.kills, coins: game.player.gold};
   const cleared = outcome === 'victory' ? [...new Set([...j.cleared,game.chapterId])] : j.cleared;
   return {...j, saved: null, bank: j.bank + record.coins, recent: [record,...j.recent].slice(0,24), cleared};

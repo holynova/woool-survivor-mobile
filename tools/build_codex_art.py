@@ -4,6 +4,9 @@ Run from the repository root with: uv run --with pillow tools/build_codex_art.py
 from functools import lru_cache
 import json
 from pathlib import Path
+import sys
+import subprocess
+import math
 import re
 
 from PIL import Image, ImageChops, ImageDraw, ImageStat
@@ -150,10 +153,78 @@ def monster(key):
     portrait.save(OUT / ("portrait-"+key+".webp"),quality=88)
 
 
+BOSS_FOOT = {'20111':34,'20038':53,'20046':35,'20082':43,'20072':29,'20085':45,'sky_pontiff':21,'hydra_king':20}
+
+
+def boss_motion(key):
+    """Sample the same timed body poses and foot pivot used by the live renderer."""
+    actions={}
+    for suffix,action in (("", "walk"), ("-cast","attack")):
+        stem=ROOT/"bosses"/(key+suffix)
+        atlas_image=Image.open(stem.with_suffix(".webp")).convert("RGBA")
+        meta=json.loads(stem.with_suffix(".json").read_text())["frames"]
+        poses=[]
+        for name,s in sorted(meta.items()):
+            if "/"+action+"/3" not in name: continue
+            r=s["frame"]; p=s["spriteSourceSize"]; src=s["sourceSize"]
+            image=atlas_image.crop((r["x"],r["y"],r["x"]+r["w"],r["y"]+r["h"]))
+            poses.append((image,p["x"]-src["w"]//2,p["y"]-src["h"]//2))
+        assert poses,key
+        actions[action]=poses
+    foot=2*BOSS_FOOT[key]
+    special="summon" if key in ("20038","20085","sky_pontiff","hydra_king") else "charge"
+    kinds=["ground","volley",special]
+    js="""import {bossPose} from './src/bossPose.ts';
+    const [kinds,count,foot,key]=JSON.parse(process.argv[1]);
+    console.log(JSON.stringify(kinds.map(kind=>{
+      const hold=kind==='charge'?.52:0;
+      const samples=[-.88,-.60,-.32,-.10,0,hold+.09,hold+.18,hold+.26];
+      return samples.map(t=>bossPose(kind,t,0,hold,count,3,foot,key));
+    })));"""
+    samples=json.loads(subprocess.check_output(["node","--experimental-strip-types","--input-type=module","-e",
+                         js,json.dumps([kinds,len(actions["attack"]),foot,key])]))
+    def draw(pose,stretch_x=1,stretch_y=1,angle=0):
+        image,x,y=pose
+        canvas=Image.new("RGBA",(780,780))
+        if (stretch_x,stretch_y)!=(1,1):
+            image=image.resize((max(1,round(image.width*stretch_x)),max(1,round(image.height*stretch_y))),Image.Resampling.LANCZOS)
+        canvas.alpha_composite(image,(390+round(x*stretch_x),510+round((y-foot)*stretch_y)))
+        if angle:canvas=canvas.rotate(-math.degrees(angle),Image.Resampling.BICUBIC,center=(390,510))
+        return canvas
+    idle=[draw(pose) for pose in actions["walk"]]
+    casts=[[draw(actions["attack"][p["frame"]],p["width"],p["height"],p["angle"]) for p in seq] for seq in samples]
+    return idle,dict(zip(kinds,casts))
+
+
+def boss(key):
+    idle,casts=boss_motion(key)
+    sequence=idle+sum((phases+[idle[-1]] for phases in casts.values()),[])
+    mask=Image.new("L",sequence[0].size)
+    for pose in sequence:mask=ImageChops.lighter(mask,pose.getchannel("A"))
+    box=mask.getbbox()
+    scale=min(307/(box[2]-box[0]),185/(box[3]-box[1]))
+    frames=[]
+    for pose in sequence:
+        im=pose.crop(box).resize((max(1,round((box[2]-box[0])*scale)),max(1,round((box[3]-box[1])*scale))),Image.Resampling.LANCZOS)
+        canvas=Image.new("RGBA",SIZE)
+        canvas.alpha_composite(im,(216-im.width//2,199-im.height))
+        frames.append(canvas)
+    export(frames,"m-boss-"+key,0,145)
+    portrait=frames[0].crop(frames[0].getbbox());portrait.thumbnail((90,90),Image.Resampling.LANCZOS)
+    portrait.save(OUT/("portrait-boss-"+key+".webp"),quality=91)
+
+
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
+    if "--bosses" in sys.argv:
+        for path in sorted((ROOT/"bosses").glob("*-cast.json")):
+            boss(path.stem.removesuffix("-cast"))
+        sys.exit(0)
     source=Path("src/config/skills.ts").read_text().split("export const WOOWL_PASSIVES")[0]
     for icon in re.findall(r"iconId: (\d+)",source):
         spell(int(icon))
     for path in sorted((ROOT/"monsters").glob("*@0.json")):
         monster(path.stem[2:].split("@")[0])
+
+    for path in sorted((ROOT/"bosses").glob("*-cast.json")):
+        boss(path.stem.removesuffix("-cast"))

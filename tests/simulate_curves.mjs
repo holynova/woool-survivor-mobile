@@ -91,12 +91,12 @@ async function runSimulation() {
         totalMinHp += res.minHpPct;
       }
       summaryByCurve[curveId] = {
-        winRate: Math.round((wins / runs) * 100),
+        openingSurvivalRate: Math.round((wins / runs) * 100),
         avgKills: Math.round(totalKills / runs),
         avgMinHp: Math.round(totalMinHp / runs)
       };
       console.log(
-        `[${curveId.padEnd(8)}] winRate=${summaryByCurve[curveId].winRate}% avgKills=${summaryByCurve[curveId].avgKills} avgMinHp=${summaryByCurve[curveId].avgMinHp}%`
+        `[${curveId.padEnd(8)}] openingSurvivalRate=${summaryByCurve[curveId].openingSurvivalRate}% avgKills=${summaryByCurve[curveId].avgKills} avgMinHp=${summaryByCurve[curveId].avgMinHp}%`
       );
     }
 
@@ -121,8 +121,8 @@ async function runSimulation() {
       }
     }
 
-    if (summaryByCurve.casual.winRate < 80) {
-      throw new Error(`Expected casual winRate >= 80%, got ${summaryByCurve.casual.winRate}%`);
+    if (summaryByCurve.casual.openingSurvivalRate < 80) {
+      throw new Error(`Expected casual openingSurvivalRate >= 80%, got ${summaryByCurve.casual.openingSurvivalRate}%`);
     }
     if (summaryByCurve.surge.avgKills <= summaryByCurve.standard.avgKills * 0.9) {
       throw new Error('Expected surge curve to deliver denser horde kills than standard');
