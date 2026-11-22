@@ -1,0 +1,472 @@
+{
+  "frames": {
+    "level_up/00000.png": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 88,
+        "h": 156
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 234,
+        "y": 276,
+        "w": 88,
+        "h": 156
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00001.png": {
+      "frame": {
+        "x": 92,
+        "y": 2,
+        "w": 186,
+        "h": 352
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 179,
+        "y": 115,
+        "w": 186,
+        "h": 352
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00002.png": {
+      "frame": {
+        "x": 280,
+        "y": 2,
+        "w": 186,
+        "h": 412
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 182,
+        "y": 58,
+        "w": 186,
+        "h": 412
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00003.png": {
+      "frame": {
+        "x": 468,
+        "y": 2,
+        "w": 206,
+        "h": 438
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 178,
+        "y": 36,
+        "w": 206,
+        "h": 438
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00004.png": {
+      "frame": {
+        "x": 676,
+        "y": 2,
+        "w": 198,
+        "h": 434
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 179,
+        "y": 38,
+        "w": 198,
+        "h": 434
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00005.png": {
+      "frame": {
+        "x": 876,
+        "y": 2,
+        "w": 186,
+        "h": 432
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 181,
+        "y": 37,
+        "w": 186,
+        "h": 432
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00006.png": {
+      "frame": {
+        "x": 1064,
+        "y": 2,
+        "w": 192,
+        "h": 432
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 177,
+        "y": 35,
+        "w": 192,
+        "h": 432
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00007.png": {
+      "frame": {
+        "x": 1258,
+        "y": 2,
+        "w": 240,
+        "h": 438
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 156,
+        "y": 48,
+        "w": 240,
+        "h": 438
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00008.png": {
+      "frame": {
+        "x": 1500,
+        "y": 2,
+        "w": 254,
+        "h": 430
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 152,
+        "y": 44,
+        "w": 254,
+        "h": 430
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00009.png": {
+      "frame": {
+        "x": 1756,
+        "y": 2,
+        "w": 262,
+        "h": 434
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 149,
+        "y": 50,
+        "w": 262,
+        "h": 434
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00010.png": {
+      "frame": {
+        "x": 2,
+        "y": 442,
+        "w": 254,
+        "h": 420
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 146,
+        "y": 51,
+        "w": 254,
+        "h": 420
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00011.png": {
+      "frame": {
+        "x": 258,
+        "y": 442,
+        "w": 242,
+        "h": 418
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 157,
+        "y": 62,
+        "w": 242,
+        "h": 418
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00012.png": {
+      "frame": {
+        "x": 502,
+        "y": 442,
+        "w": 260,
+        "h": 394
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 149,
+        "y": 74,
+        "w": 260,
+        "h": 394
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00013.png": {
+      "frame": {
+        "x": 764,
+        "y": 442,
+        "w": 264,
+        "h": 330
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 144,
+        "y": 136,
+        "w": 264,
+        "h": 330
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00014.png": {
+      "frame": {
+        "x": 1030,
+        "y": 442,
+        "w": 256,
+        "h": 320
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 152,
+        "y": 149,
+        "w": 256,
+        "h": 320
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00015.png": {
+      "frame": {
+        "x": 1288,
+        "y": 442,
+        "w": 234,
+        "h": 306
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 150,
+        "y": 160,
+        "w": 234,
+        "h": 306
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00016.png": {
+      "frame": {
+        "x": 1524,
+        "y": 442,
+        "w": 240,
+        "h": 316
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 147,
+        "y": 151,
+        "w": 240,
+        "h": 316
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00017.png": {
+      "frame": {
+        "x": 1766,
+        "y": 442,
+        "w": 246,
+        "h": 314
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 145,
+        "y": 151,
+        "w": 246,
+        "h": 314
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00018.png": {
+      "frame": {
+        "x": 2,
+        "y": 864,
+        "w": 246,
+        "h": 92
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 144,
+        "y": 184,
+        "w": 246,
+        "h": 92
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00019.png": {
+      "frame": {
+        "x": 250,
+        "y": 864,
+        "w": 246,
+        "h": 92
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 144,
+        "y": 184,
+        "w": 246,
+        "h": 92
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00020.png": {
+      "frame": {
+        "x": 498,
+        "y": 864,
+        "w": 246,
+        "h": 92
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 144,
+        "y": 184,
+        "w": 246,
+        "h": 92
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00021.png": {
+      "frame": {
+        "x": 746,
+        "y": 864,
+        "w": 240,
+        "h": 88
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 147,
+        "y": 187,
+        "w": 240,
+        "h": 88
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    },
+    "level_up/00022.png": {
+      "frame": {
+        "x": 988,
+        "y": 864,
+        "w": 236,
+        "h": 88
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 150,
+        "y": 186,
+        "w": 236,
+        "h": 88
+      },
+      "sourceSize": {
+        "w": 540,
+        "h": 540
+      }
+    }
+  },
+  "meta": {
+    "image": "level_up@0.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 2048,
+      "h": 1024
+    }
+  }
+}

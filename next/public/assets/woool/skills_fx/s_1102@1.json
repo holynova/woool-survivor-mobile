@@ -1,0 +1,115 @@
+{
+  "frames": {
+    "1102/attack/40009.png": {
+      "frame": {
+        "x": 4,
+        "y": 4,
+        "w": 174,
+        "h": 328
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 316,
+        "y": 316,
+        "w": 174,
+        "h": 328
+      },
+      "sourceSize": {
+        "w": 800,
+        "h": 800
+      }
+    },
+    "1102/attack/30006.png": {
+      "frame": {
+        "x": 182,
+        "y": 4,
+        "w": 318,
+        "h": 320
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 352,
+        "y": 254,
+        "w": 318,
+        "h": 320
+      },
+      "sourceSize": {
+        "w": 800,
+        "h": 800
+      }
+    },
+    "1102/attack/10009.png": {
+      "frame": {
+        "x": 4,
+        "y": 336,
+        "w": 328,
+        "h": 312
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 378,
+        "y": 130,
+        "w": 328,
+        "h": 312
+      },
+      "sourceSize": {
+        "w": 800,
+        "h": 800
+      }
+    },
+    "1102/attack/30009.png": {
+      "frame": {
+        "x": 4,
+        "y": 652,
+        "w": 320,
+        "h": 308
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 333,
+        "y": 278,
+        "w": 320,
+        "h": 308
+      },
+      "sourceSize": {
+        "w": 800,
+        "h": 800
+      }
+    },
+    "1102/attack/00001.png": {
+      "frame": {
+        "x": 328,
+        "y": 652,
+        "w": 176,
+        "h": 72
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 328,
+        "y": 345,
+        "w": 176,
+        "h": 72
+      },
+      "sourceSize": {
+        "w": 800,
+        "h": 800
+      }
+    }
+  },
+  "meta": {
+    "app": "woool-clean-repack",
+    "version": "2.3",
+    "image": "s_1102@1.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 512,
+      "h": 1024
+    },
+    "scale": "1"
+  }
+}
